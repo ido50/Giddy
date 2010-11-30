@@ -179,12 +179,31 @@ sub find {
 	my ($file) = ($path =~ m!/([^/]+)$!);
 	my $dir = $` || '';
 	$dir =~ s!^/!!;
+	my $collection = Giddy::Collection->new(giddy => $self, path => $dir, futil => $self->futil);
 
 	my @files = $self->repo->run('ls-tree', '--name-only', "HEAD:$dir");
 	my $cursor = Giddy::Cursor->new(query => { type => 'find', in => $path, opts => $opts });
 
 	foreach (@files) {
-		$cursor->_add_result($_) if m/$file/;
+		if (m/$file/) {
+			my $full_path = $_;
+			$full_path = $dir.'/'.$_ if $dir;
+			# what is the type of this thing?
+			my $t = $self->repo->run('cat-file', '-t', "HEAD:$full_path");
+			if ($t eq 'tree') {
+				# this is either a collection or a document,
+				# and we need to ignore documents, which are
+				# marked with a .gdoc file
+				if ($self->repo->run('cat-file', '-t', "HEAD:$full_path/.gdoc") eq 'blob') {
+					# great, this is a document, let's add it
+				}
+			} elsif ($t eq 'blob') {
+				# cool, this is a file
+				my ($name, $type) = (m/^(.+)\.([^.]+)$/);
+				my $f = Giddy::File->new(collection => $collection, name => $name, type => $type);
+				$cursor->_add_result($f);
+			}
+		}
 	}
 
 	return $cursor;

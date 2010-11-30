@@ -24,6 +24,11 @@ sub new_file {
 	croak "File to create already exists."
 		if -e $self->giddy->repo->work_tree.'/'.$self->path.'/'.$filename;
 
+	# make sure file has an extension
+	if ($filename !~ m/\.([^.]+)$/) {
+		$filename .= '.txt';
+	}
+
 	# create the file
 	$self->futil->write_file(file => $self->giddy->repo->work_tree.'/'.$self->path.'/'.$filename, content => $content);
 	chmod 0664, $self->giddy->repo->work_tree.'/'.$self->path.'/'.$filename;
@@ -31,7 +36,9 @@ sub new_file {
 	# mark the file for staging
 	$self->giddy->mark($self->path.'/'.$filename);
 
-	return Giddy::File->new(collection => $self, name => $filename);
+	my ($name, $type) = ($filename =~ m/^(.+)\.([^.]+)$/);
+
+	return Giddy::File->new(collection => $self, name => $name, type => $type);
 }
 
 =head2 new_document( $document_name, \%attributes )
@@ -56,12 +63,11 @@ sub new_document {
 
 	mkdir $docpath;
 	chmod 0775, $docpath;
-	$self->giddy->mark($docpath);
+	$self->giddy->mark($self->path.'/'.$name.'/');
 
 	foreach (keys %$attrs) {
 		$self->futil->write_file(file => $docpath.'/'.$_, content => $attrs->{$_});
 		chmod 0664, $docpath.'/'.$_;
-		$self->giddy->mark($docpath.'/'.$_);
 	}
 
 	# mark the document's directory as a document directory

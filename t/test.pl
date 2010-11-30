@@ -19,7 +19,7 @@ $coll->new_file('asdf.txt', 'asdf');
 print $file->working_content, "\n";
 
 # create a new document
-#$coll->new_document('about', { 'subject.txt' => 'About Giddy', 'text.html' => '<p>This is stupid</p>' });
+$coll->new_document('about', { 'subject.txt' => 'About Giddy', 'text.html' => '<p>This is stupid</p>' });
 
 # commit the changes
 $g->commit( "Testing a commit" );
@@ -29,5 +29,5 @@ print $file->content, "\n";
 my $cursor = $g->find('/collection/index');
 print "Found ".$cursor->count." results:\n";
 foreach ($cursor->all) {
-	print "$_\n";
+	print $_->id, " => ", $_->content, "\n";
 }
