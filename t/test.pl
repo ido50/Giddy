@@ -16,7 +16,7 @@ my $file = $coll->new_file('index.html', 'whatever the fuck ever');
 $coll->new_file('index.json', '{ how: "so" }');
 $coll->new_file('asdf.txt', 'asdf');
 
-print $file->working_content, "\n";
+print "Working content: ", $file->working_content, "\n";
 
 # create a new document
 $coll->new_document('about', { 'subject.txt' => 'About Giddy', 'text.html' => '<p>This is stupid</p>' });
@@ -24,10 +24,18 @@ $coll->new_document('about', { 'subject.txt' => 'About Giddy', 'text.html' => '<
 # commit the changes
 $g->commit( "Testing a commit" );
 
-print $file->content, "\n";
+print "Saved content: ", $file->content, "\n";
 
-my $cursor = $g->find('/collection/index');
+print "Searching for /collection/index.html\n";
+my $cursor = $g->find('/collection/index.html');
 print "Found ".$cursor->count." results:\n";
 foreach ($cursor->all) {
 	print $_->id, " => ", $_->content, "\n";
+}
+
+print "Searching for /collection/about\n";
+my $c2 = $g->find('/collection/about');
+print "Found ".$c2->count." results:\n";
+foreach ($c2->all) {
+	print $_->name, ': ', join(', ', $_->attrs), "\n";
 }

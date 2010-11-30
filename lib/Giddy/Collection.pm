@@ -24,11 +24,6 @@ sub new_file {
 	croak "File to create already exists."
 		if -e $self->giddy->repo->work_tree.'/'.$self->path.'/'.$filename;
 
-	# make sure file has an extension
-	if ($filename !~ m/\.([^.]+)$/) {
-		$filename .= '.txt';
-	}
-
 	# create the file
 	$self->futil->write_file(file => $self->giddy->repo->work_tree.'/'.$self->path.'/'.$filename, content => $content);
 	chmod 0664, $self->giddy->repo->work_tree.'/'.$self->path.'/'.$filename;
@@ -36,9 +31,7 @@ sub new_file {
 	# mark the file for staging
 	$self->giddy->mark($self->path.'/'.$filename);
 
-	my ($name, $type) = ($filename =~ m/^(.+)\.([^.]+)$/);
-
-	return Giddy::File->new(collection => $self, name => $name, type => $type);
+	return Giddy::File->new(collection => $self, name => $filename);
 }
 
 =head2 new_document( $document_name, \%attributes )

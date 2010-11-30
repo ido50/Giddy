@@ -196,12 +196,11 @@ sub find {
 				# marked with a .gdoc file
 				if ($self->repo->run('cat-file', '-t', "HEAD:$full_path/.gdoc") eq 'blob') {
 					# great, this is a document, let's add it
+					$cursor->_add_result(Giddy::Document->new(collection => $collection, name => $_));
 				}
 			} elsif ($t eq 'blob') {
 				# cool, this is a file
-				my ($name, $type) = (m/^(.+)\.([^.]+)$/);
-				my $f = Giddy::File->new(collection => $collection, name => $name, type => $type);
-				$cursor->_add_result($f);
+				$cursor->_add_result(Giddy::File->new(collection => $collection, name => $_));
 			}
 		}
 	}

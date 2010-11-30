@@ -7,12 +7,8 @@ has 'collection' => (is => 'ro', isa => 'Giddy::Collection', required => 1);
 
 has 'name' => (is => 'ro', isa => 'Str', required => 1);
 
-has 'type' => (is => 'ro', isa => 'Str', default => 'txt');
-
 sub id {
-	my $self = shift;
-
-	return $self->name.'.'.$self->type;
+	$_[0]->name;
 }
 
 sub content {
@@ -24,7 +20,7 @@ sub content {
 sub rel_path {
 	my $self = shift;
 
-	return $self->collection->path.'/'.$self->name.'.'.$self->type;
+	return $self->collection->path.'/'.$self->name;
 }
 
 sub full_path {
@@ -37,6 +33,14 @@ sub working_content {
 	my $self = shift;
 
 	return $self->collection->futil->load_file($self->full_path);
+}
+
+sub attrs {
+	'content';
+}
+
+sub attr {
+	shift->content;
 }
 
 __PACKAGE__->meta->make_immutable;
