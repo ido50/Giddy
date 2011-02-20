@@ -3,16 +3,73 @@ package Giddy::Cursor;
 use Any::Moose;
 use Carp;
 
-has 'query' => (is => 'ro', isa => 'HashRef', required => 1);
-
 has 'count' => (is => 'ro', isa => 'Int', default => 0, writer => '_set_count');
 
-has 'results' => (is => 'ro', isa => 'ArrayRef', writer => '_set_results', predicate => 'has_results');
+has '_results' => (is => 'ro', isa => 'ArrayRef[HashRef]', writer => '_set_results', predicate => '_has_results');
+
+has '_query' => (is => 'ro', isa => 'HashRef', required => 1);
+
+has '_loc' => (is => 'ro', isa => 'Int', default => 0, writer => '_set_loc');
+
+has '_loaded_results' => (is => 'ro', isa => 'HashRef', predicate => '_has_loaded', writer => '_set_loaded_results');
+
+=head1 OBJECT METHODS
+
+=head2 all()
+
+=cut
+
+sub all {
+	my $self = shift;
+	my @results;
+	while ($self->has_next) {
+		push(@results, $self->next);
+	}
+	return @results;
+}
+
+sub has_next {
+	$_[0]->_loc < $_[0]->count;
+}
+
+sub next {
+	my $self = shift;
+
+	return unless $self->has_next;
+
+	my $next = $self->_load_result($self->_results->[$self->_loc]);
+	$self->_inc_loc;
+	return $next;
+}
+
+sub rewind {
+	$_[0]->_set_loc(0);
+}
+
+sub first {
+	my $self = shift;
+
+	return unless $self->count;
+
+	return $self->_load_result($self->results->[0]);
+}
+
+sub last {
+	my $self = shift;
+
+	return unless $self->count;
+
+	return $self->_load_result($self->results->[$self->count - 1]);
+}
+
+=head1 INTERNAL METHODS
+
+=cut
 
 sub _add_result {
 	my ($self, $res) = @_;
 
-	my @results = @{$self->results || []};
+	my @results = @{$self->_results || []};
 	push(@results, $res);
 	$self->_set_results(\@results);
 	$self->_inc_count;
@@ -24,24 +81,10 @@ sub _inc_count {
 	$self->_set_count($self->count + 1);
 }
 
-sub all {
-	@{shift->results || []};
-}
-
-sub first {
+sub _inc_loc {
 	my $self = shift;
 
-	return unless $self->count;
-
-	return $self->results->[0];
-}
-
-sub last {
-	my $self = shift;
-
-	return unless $self->count;
-
-	return $self->results->[$self->count - 1];
+	$self->_set_loc($self->_loc + 1);
 }
 
 __PACKAGE__->meta->make_immutable;
