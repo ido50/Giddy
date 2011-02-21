@@ -2,6 +2,8 @@ package Giddy::Cursor;
 
 use Any::Moose;
 use Carp;
+use Try::Tiny;
+use YAML::Any;
 
 has 'count' => (is => 'ro', isa => 'Int', default => 0, writer => '_set_count');
 
@@ -85,6 +87,16 @@ sub _inc_loc {
 	my $self = shift;
 
 	$self->_set_loc($self->_loc + 1);
+}
+
+sub _load_result {
+	my ($self, $result) = @_;
+
+	if ($result->{article}) {
+		return $self->_query->{coll}->_load_article($result->{article}, $self->_query->{opts}->{working});
+	} elsif ($result->{document}) {
+		return $self->_query->{coll}->_load_document($result->{document}, $self->_query->{opts}->{working});
+	}
 }
 
 __PACKAGE__->meta->make_immutable;

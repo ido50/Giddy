@@ -4,9 +4,7 @@ package Giddy;
 
 use Any::Moose;
 use Carp;
-use autodie qw/:all/;
 use Giddy::Database;
-use Try::Tiny;
 
 =head1 NAME
 

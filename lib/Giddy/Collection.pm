@@ -4,6 +4,7 @@ use Any::Moose;
 use Giddy::Cursor;
 use YAML::Any;
 use Carp;
+use File::Util;
 
 has 'path' => (is => 'ro', isa => 'Str', required => 1);
 
@@ -105,7 +106,7 @@ sub find {
 	$opts ||= {};
 
 	my @files = try { $self->_database->_repo->run('ls-tree', '--name-only', 'HEAD:'.$self->path); };
-	my $cursor = Giddy::Cursor->new(_query => { type => 'find', in => $path, opts => $opts });
+	my $cursor = Giddy::Cursor->new(_query => { path => $path, coll => $self, opts => $opts });
 
 	foreach (@files) {
 		# ignore meta.yaml files
@@ -137,6 +138,77 @@ sub find {
 
 sub find_one {
 	shift->find(@_)->first;
+}
+
+=head1 INTERNAL METHODS
+
+=head2 _load_article( $path, [ $working ] )
+
+=cut
+
+sub _load_article {
+	my ($self, $path, $working) = @_;
+
+	my $content = $working ?
+		''.$self->_futil->load_file($self->_database->_repo->work_tree.'/'.$path) :
+		''.$self->_database->_repo->run('show', 'HEAD:'.$path);
+
+	my ($yaml, $body) = ('', '');
+	if ($content =~ m/\n\n/) {
+		($yaml, $body) = ($`, $');
+	} else {
+		$body = $content;
+	}
+
+	return try {
+		my $meta = Load($yaml);
+		return { body => $body, meta => $meta, _collection => $self };
+	} catch {
+		return { body => $body, meta => {   }, _collection => $self };
+	};
+}
+
+=head2 _load_document( $path, [ $working ] )
+
+=cut
+
+sub _load_document {
+	my ($self, $path, $working) = @_;
+
+	my $doc = { meta => {} };
+
+	if ($working) {
+		# try to load the meta data
+		$doc->{meta} = ''.$self->_futil->load_file($self->_database->_repo->work_tree.'/'.$path.'/meta.yaml')
+			if -e $self->_database->_repo->work_tree.'/'.$path.'/meta.yaml';
+
+		# try to load the attributes
+		foreach (grep {!/^meta\.yaml$/} $self->_futil->list_dir($self->_database->_repo->work_tree.'/'.$path, '--files-only')) {
+			# only load text files
+			my $type = $self->_futil->file_type($self->_database->_repo->work_tree.'/'.$path, '--files-only');
+			if ($type eq 'PLAIN' || $type eq 'TEXT') {
+				$doc->{$_} = $self->_futil->load_file($self->_database->_repo->work_tree.'/'.$path.'/'.$_);
+			} else {
+				$doc->{$_} = $path.'/'.$_;
+			}
+		}
+	} else {
+		# try to load the meta data
+		$doc->{meta} = Load($self->_database->_repo->run('show', 'HEAD:'.$path.'/meta.yaml'))
+			if grep {/^meta\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$path);
+
+		# try to load attributes (but only load text files, leave paths for binary)
+		foreach ($self->_database->_repo->run('grep', '--cached', '-I', '-l', '-e', '$\'\'', $path)) {
+			$doc->{$_} = ''.$_[0]->_database->_repo->run('show', 'HEAD:'.$path.'/'.$_);
+		}
+		# now load binary files
+		foreach (grep {!/^meta\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$path)) {
+			next unless $doc->{$_}; # this is a text file we've already loaded
+			$doc->{$_} = $path.'/'.$_;
+		}
+	}
+
+	return $doc;
 }
 
 __PACKAGE__->meta->make_immutable;
