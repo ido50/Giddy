@@ -5,6 +5,7 @@ use Giddy::Cursor;
 use YAML::Any;
 use Carp;
 use File::Util;
+use Try::Tiny;
 
 has 'path' => (is => 'ro', isa => 'Str', required => 1);
 
@@ -23,28 +24,26 @@ sub insert_article {
 		unless $filename;
 
 	croak "An article called $filename already exists."
-		if -e $self->_database->repo->work_tree.'/'.$self->path.'/'.$filename;
+		if -e $self->_database->_repo->work_tree.'/'.$self->path.'/'.$filename;
 
 	croak "Meta-data for the article must be a hash-ref"
 		if $meta && ref $meta ne 'HASH';
 
 	my $content = '';
-	$content .= Dump($meta) . "\n\n" if $meta;
+	$content .= Dump($meta) . "\n" if $meta && scalar keys %$meta;
 	$content .= $body if $body;
+	$content = ' ' unless $content;
+	$content =~ s/^---\n//;
 
 	# create the article
-	$self->futil->write_file(file => $self->_database->repo->work_tree.'/'.$self->path.'/'.$filename, content => $content);
-	chmod 0664, $self->_database->repo->work_tree.'/'.$self->path.'/'.$filename;
+	$self->_futil->write_file(file => $self->_database->_repo->work_tree.'/'.$self->path.'/'.$filename, content => $content, bitmask => 0664);
+	#chmod 0664, $self->_database->_repo->work_tree.'/'.$self->path.'/'.$filename;
 
 	# mark the file for staging
 	$self->_database->mark($self->path.'/'.$filename);
 
-	# return the document
-	return {
-		body => $body,
-		meta => $meta,
-		_collection => $self,
-	};
+	# return the article's path
+	return $self->path.'/'.$filename;
 }
 
 =head2 insert_document( $document_name, \%attributes, [ \%meta ] )
@@ -63,31 +62,30 @@ sub insert_document {
 	croak "The meta-data must be a hash-ref."
 		if $meta && ref $meta ne 'HASH';
 
-	my $docpath = $self->_database->repo->work_tree.'/'.$self->path.'/'.$name;
+	my $docpath = $self->_database->_repo->work_tree.'/'.$self->path.'/'.$name;
 
 	croak "A document (or a collection) named $name already exists."
 		if -d $docpath;
 
 	# create the attribute files
 	foreach (keys %$attrs) {
-		$self->futil->write_file(file => $docpath.'/'.$_, content => $attrs->{$_});
-		chmod 0664, $docpath.'/'.$_;
+		$self->_futil->write_file('file' => $docpath.'/'.$_, 'content' => $attrs->{$_}, 'bitmask' => 0664);
+		#chmod 0664, $docpath.'/'.$_;
 	}
 
 	# create the meta file
 	my $meta_content = $meta ? Dump($meta) : ' ';
-	$self->futil->write_file(file => $docpath.'/meta.yaml', content => $meta_content);
-	chmod 0664, $docpath.'/meta.yaml';
+	$meta_content =~ s/^---\n//;
+	$self->_futil->write_file('file' => $docpath.'/meta.yaml', 'content' => $meta_content, 'bitmask' => 0664);
+	#chmod 0664, $docpath.'/meta.yaml';
 
 	# mark the document for staging
 	mkdir $docpath;
 	chmod 0775, $docpath;
 	$self->_database->mark($self->path.'/'.$name.'/');
 
-	# return the document
-	my $doc = map { $_ => $attrs->{$_} } keys %$attrs;
-	$doc->{meta} = $meta || {};
-	return $doc;
+	# return the document's path
+	return $self->path.'/'.$name;
 }
 
 =head2 find( [ $path, [\%options] ] )
@@ -102,10 +100,13 @@ is not provided.
 sub find {
 	my ($self, $path, $opts) = @_;
 
+	croak "find() expected a hash-ref for options, but received ".ref($opts)
+		if $opts && ref $opts ne 'HASH';
+
 	$path ||= '';
 	$opts ||= {};
 
-	my @files = try { $self->_database->_repo->run('ls-tree', '--name-only', 'HEAD:'.$self->path); };
+	my @files = $self->_database->_repo->run('ls-tree', '--name-only', 'HEAD:'.$self->path);
 	my $cursor = Giddy::Cursor->new(_query => { path => $path, coll => $self, opts => $opts });
 
 	foreach (@files) {
@@ -115,10 +116,10 @@ sub find {
 			my $full_path = $_;
 			$full_path = $self->path.'/'.$_ if $self->path;
 			# what is the type of this thing?
-			my $t = $self->repo->run('cat-file', '-t', "HEAD:$full_path");
+			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$full_path");
 			if ($t eq 'tree') {
 				# this is either a collection or a document
-				if (grep {/^meta\.yaml$/} $self->repo->run('ls-tree', '--name-only', "HEAD:$full_path")) {
+				if (grep {/^meta\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$full_path")) {
 					# great, this is a document, let's add it
 					$cursor->_add_result({ document => $full_path });
 				}
@@ -162,9 +163,9 @@ sub _load_article {
 
 	return try {
 		my $meta = Load($yaml);
-		return { body => $body, meta => $meta, _collection => $self };
+		return { body => $body, meta => $meta, _collection => $self, path => $path };
 	} catch {
-		return { body => $body, meta => {   }, _collection => $self };
+		return { body => $body, meta => {   }, _collection => $self, path => $path };
 	};
 }
 
@@ -175,7 +176,7 @@ sub _load_article {
 sub _load_document {
 	my ($self, $path, $working) = @_;
 
-	my $doc = { meta => {} };
+	my $doc = { meta => {}, path => $path };
 
 	if ($working) {
 		# try to load the meta data

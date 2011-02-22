@@ -46,7 +46,7 @@ sub get_collection {
 		unless $path;
 
 	croak "Can't find the collection's parent."
-		if $path =~ m!/[^/]+$! && !-d $self->repo->work_tree.'/'.$`;
+		if $path =~ m!/[^/]+$! && !-d $self->_repo->work_tree.'/'.$`;
 
 	# is this an existing collection, or a new one?
 	if (-d $self->_repo->work_tree.'/'.$path) {
@@ -57,8 +57,8 @@ sub get_collection {
 		return Giddy::Collection->new(_database => $self, path => $path);
 	} else {
 		# create the collection
-		mkdir $self->repo->work_tree.'/'.$path;
-		chmod 0775, $self->repo->work_tree.'/'.$path;
+		mkdir $self->_repo->work_tree.'/'.$path;
+		chmod 0775, $self->_repo->work_tree.'/'.$path;
 
 		# mark the directory as to be stages
 		$self->mark($path);
@@ -84,11 +84,11 @@ sub commit {
 
 	# stage the files
 	foreach (@{$self->{marked}}) {
-		$self->repo->run('add', $_);
+		$self->_repo->run('add', $_);
 	}
 
 	# commit
-	$self->repo->run('commit', '-m', $msg);
+	$self->_repo->run('commit', '-m', $msg);
 
 	return 1;
 }
@@ -128,6 +128,9 @@ is not provided.
 sub find {
 	my ($self, $path, $opts) = @_;
 
+	croak "find() expected a hash-ref for options, but received ".ref($opts)
+		if $opts && ref $opts ne 'HASH';
+
 	$path ||= '';
 	$opts ||= {};
 
@@ -136,9 +139,10 @@ sub find {
 	$file = $path unless $file;
 	my $dir = $` || '';
 	$dir =~ s!^/!!;
-	my $coll = $self->get_collection($dir);
 
-	return $coll->find($file, $opts);
+	print STDERR "Searching for $file in $dir\n";
+
+	return $self->get_collection($dir)->find($file, $opts);
 }
 
 =head2 find_one( $path, [\%options] )

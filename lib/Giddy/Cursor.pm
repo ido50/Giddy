@@ -53,7 +53,7 @@ sub first {
 
 	return unless $self->count;
 
-	return $self->_load_result($self->results->[0]);
+	return $self->_load_result($self->_results->[0]);
 }
 
 sub last {
@@ -61,7 +61,7 @@ sub last {
 
 	return unless $self->count;
 
-	return $self->_load_result($self->results->[$self->count - 1]);
+	return $self->_load_result($self->_results->[$self->count - 1]);
 }
 
 =head1 INTERNAL METHODS
