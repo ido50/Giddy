@@ -1,1 +1,55 @@
-Giddy
+NAME
+    Giddy - Schemaless, versioned media/document database based on Git.
+
+SYNOPSIS
+DESCRIPTION
+ATTRIBUTES
+  _futil
+    A File::Util object to be used by the module. Automatically created.
+
+CLASS METHODS
+  new()
+OBJECT METHODS
+  get_database( $path )
+AUTHOR
+    Ido Perlmuter, "<ido at ido50.net>"
+
+BUGS
+    Please report any bugs or feature requests to "bug-giddy at
+    rt.cpan.org", or through the web interface at
+    <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Giddy>. I will be
+    notified, and then you'll automatically be notified of progress on your
+    bug as I make changes.
+
+SUPPORT
+    You can find documentation for this module with the perldoc command.
+
+            perldoc Giddy
+
+    You can also look for information at:
+
+    *   RT: CPAN's request tracker
+
+        <http://rt.cpan.org/NoAuth/Bugs.html?Dist=Giddy>
+
+    *   AnnoCPAN: Annotated CPAN documentation
+
+        <http://annocpan.org/dist/Giddy>
+
+    *   CPAN Ratings
+
+        <http://cpanratings.perl.org/d/Giddy>
+
+    *   Search CPAN
+
+        <http://search.cpan.org/dist/Giddy/>
+
+LICENSE AND COPYRIGHT
+    Copyright 2010 Ido Perlmuter.
+
+    This program is free software; you can redistribute it and/or modify it
+    under the terms of either: the GNU General Public License as published
+    by the Free Software Foundation; or the Artistic License.
+
+    See http://dev.perl.org/licenses/ for more information.
+
