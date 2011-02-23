@@ -3,11 +3,11 @@ package Giddy::Database;
 # ABSTRACT: A Giddy database.
 
 use Any::Moose;
-use Carp;
-use autodie qw/:all/;
+use namespace::autoclean;
+
 use Git::Repository;
 use Giddy::Collection;
-use Try::Tiny;
+use Carp;
 
 =head1 NAME
 
@@ -24,9 +24,15 @@ Giddy::Database - A Giddy database.
 A L<Git::Repository> object, tied to the git repository of the Giddy database.
 This is a required attribute.
 
+=head2 _futil
+
+A L<File::Util> object to be used by the module. Required.
+
 =cut
 
 has '_repo' => (is => 'ro', isa => 'Git::Repository', required => 1);
+
+has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
 
 =head1 OBJECT METHODS
 
@@ -37,33 +43,31 @@ has '_repo' => (is => 'ro', isa => 'Git::Repository', required => 1);
 sub get_collection {
 	my ($self, $path) = @_;
 
+	$path ||= '';
+
 	# remove trailing slash from path, if exists
 	$path =~ s!/$!!;
 	# remove starting slash from path, if exists
 	$path =~ s!^/!!;
 
-	croak "You must provide the relative path of the collection."
-		unless $path;
-
 	croak "Can't find the collection's parent."
-		if $path =~ m!/[^/]+$! && !-d $self->_repo->work_tree.'/'.$`;
+		if $path =~ m!/[^/]+$! && !-d File::Spec->catdir($self->_repo->work_tree, $`);
 
 	# is this an existing collection, or a new one?
-	if (-d $self->_repo->work_tree.'/'.$path) {
+	if (-d File::Spec->catdir($self->_repo->work_tree, $path)) {
 		# make sure this is a collection and not a document
 		croak "Path describes a document and not a collection."
-			if -e $self->_repo->work_tree.'/'.$path.'/meta.yaml';
+			if -e File::Spec->catfile($self->_repo->work_tree, $path, 'meta.yaml');
 
-		return Giddy::Collection->new(_database => $self, path => $path);
+		return Giddy::Collection->new(_database => $self, path => $path, _futil => $self->_futil);
 	} else {
 		# create the collection
-		mkdir $self->_repo->work_tree.'/'.$path;
-		chmod 0775, $self->_repo->work_tree.'/'.$path;
+		$self->_futil->make_dir(File::Spec->catdir($self->_repo->work_tree, $path), 0775);
 
 		# mark the directory as to be stages
 		$self->mark($path);
 
-		return Giddy::Collection->new(_database => $self, path => $path);
+		return Giddy::Collection->new(_database => $self, path => $path, _futil => $self->_futil);
 	}
 }
 
@@ -139,8 +143,6 @@ sub find {
 	$file = $path unless $file;
 	my $dir = $` || '';
 	$dir =~ s!^/!!;
-
-	print STDERR "Searching for $file in $dir\n";
 
 	return $self->get_collection($dir)->find($file, $opts);
 }

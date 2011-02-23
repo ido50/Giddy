@@ -1,17 +1,56 @@
 package Giddy::Collection;
 
+# ABSTRACT: A Giddy collection.
+
 use Any::Moose;
+use namespace::autoclean;
+
+use File::Spec;
 use Giddy::Cursor;
 use YAML::Any;
-use Carp;
 use File::Util;
 use Try::Tiny;
+use MIME::Types;
+use Carp;
 
-has 'path' => (is => 'ro', isa => 'Str', required => 1);
+=head1 NAME
+
+Giddy::Collection - A Giddy collection.
+
+=head1 SYNOPSIS
+
+=head1 DESCRIPTION
+
+=head1 ATTRIBUTES
+
+=head2 path
+
+The relative path of the collection. Defaults to an empty string, which
+is the root directory of the database.
+
+=head2 _database
+
+The L<Giddy::Database> object the collection belongs to. Required.
+
+=head2 _futil
+
+A L<File::Util> object used by the module. Required.
+
+=head2 _mt
+
+A L<MIME::Types> object used by the module. Automatically created.
+
+=cut
+
+has 'path' => (is => 'ro', isa => 'Str', default => '');
 
 has '_database' => (is => 'ro', isa => 'Giddy::Database', required => 1);
 
-has '_futil' => (is => 'ro', isa => 'File::Util', default => sub { File::Util->new });
+has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
+
+has '_mt' => (is => 'ro', isa => 'MIME::Types', default => sub { MIME::Types->new });
+
+=head1 OBJECT METHODS
 
 =head2 insert_article( $article_name, [ $body, \%meta ] )
 
@@ -23,8 +62,10 @@ sub insert_article {
 	croak "You must provide a filename for the new article."
 		unless $filename;
 
-	croak "An article called $filename already exists."
-		if -e $self->_database->_repo->work_tree.'/'.$self->path.'/'.$filename;
+	my $fpath = File::Spec->catfile($self->_database->_repo->work_tree, $self->path, $filename);
+
+	croak "An article (or document) called $filename already exists."
+		if -e $fpath;
 
 	croak "Meta-data for the article must be a hash-ref"
 		if $meta && ref $meta ne 'HASH';
@@ -36,14 +77,17 @@ sub insert_article {
 	$content =~ s/^---\n//;
 
 	# create the article
-	$self->_futil->write_file(file => $self->_database->_repo->work_tree.'/'.$self->path.'/'.$filename, content => $content, bitmask => 0664);
-	#chmod 0664, $self->_database->_repo->work_tree.'/'.$self->path.'/'.$filename;
+	$self->_futil->write_file(file => $fpath, content => $content, bitmask => 0664);
 
 	# mark the file for staging
-	$self->_database->mark($self->path.'/'.$filename);
+	$self->_database->mark(File::Spec->catfile($self->path, $filename));
 
 	# return the article's path
-	return $self->path.'/'.$filename;
+	if ($self->path) {
+		return File::Spec->catfile($self->path, $filename);
+	} else {
+		return $filename;
+	}
 }
 
 =head2 insert_document( $document_name, \%attributes, [ \%meta ] )
@@ -62,30 +106,33 @@ sub insert_document {
 	croak "The meta-data must be a hash-ref."
 		if $meta && ref $meta ne 'HASH';
 
-	my $docpath = $self->_database->_repo->work_tree.'/'.$self->path.'/'.$name;
+	my $docpath = File::Spec->catdir($self->_database->_repo->work_tree, $self->path, $name);
 
 	croak "A document (or a collection) named $name already exists."
-		if -d $docpath;
+		if -e $docpath;
+
+	# create the document directory
+	$self->_futil->make_dir($docpath, 0775);
 
 	# create the attribute files
 	foreach (keys %$attrs) {
-		$self->_futil->write_file('file' => $docpath.'/'.$_, 'content' => $attrs->{$_}, 'bitmask' => 0664);
-		#chmod 0664, $docpath.'/'.$_;
+		$self->_futil->write_file('file' => File::Spec->catfile($docpath, $_), 'content' => $attrs->{$_}, 'bitmask' => 0664);
 	}
 
 	# create the meta file
 	my $meta_content = $meta ? Dump($meta) : ' ';
 	$meta_content =~ s/^---\n//;
-	$self->_futil->write_file('file' => $docpath.'/meta.yaml', 'content' => $meta_content, 'bitmask' => 0664);
-	#chmod 0664, $docpath.'/meta.yaml';
+	$self->_futil->write_file('file' => File::Spec->catfile($docpath, 'meta.yaml'), 'content' => $meta_content, 'bitmask' => 0664);
 
 	# mark the document for staging
-	mkdir $docpath;
-	chmod 0775, $docpath;
-	$self->_database->mark($self->path.'/'.$name.'/');
+	$self->_database->mark(File::Spec->catdir($self->path, $name));
 
 	# return the document's path
-	return $self->path.'/'.$name;
+	if ($self->path) {
+		return File::Spec->catdir($self->path, $name);
+	} else {
+		return $name;
+	}
 }
 
 =head2 find( [ $path, [\%options] ] )
@@ -114,7 +161,7 @@ sub find {
 		next if $_ eq 'meta.yaml';
 		if (m/$path/) {
 			my $full_path = $_;
-			$full_path = $self->path.'/'.$_ if $self->path;
+			$full_path = File::Spec->catfile($self->path, $_) if $self->path;
 			# what is the type of this thing?
 			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$full_path");
 			if ($t eq 'tree') {
@@ -151,7 +198,7 @@ sub _load_article {
 	my ($self, $path, $working) = @_;
 
 	my $content = $working ?
-		''.$self->_futil->load_file($self->_database->_repo->work_tree.'/'.$path) :
+		''.$self->_futil->load_file(File::Spec->catfile($self->_database->_repo->work_tree, $path)) :
 		''.$self->_database->_repo->run('show', 'HEAD:'.$path);
 
 	my ($yaml, $body) = ('', '');
@@ -178,38 +225,99 @@ sub _load_document {
 
 	my $doc = { meta => {}, path => $path };
 
+	my $fpath = File::Spec->catdir($self->_database->_repo->work_tree, $path);
+
 	if ($working) {
 		# try to load the meta data
-		$doc->{meta} = ''.$self->_futil->load_file($self->_database->_repo->work_tree.'/'.$path.'/meta.yaml')
-			if -e $self->_database->_repo->work_tree.'/'.$path.'/meta.yaml';
+		$doc->{meta} = ''.$self->_futil->load_file(File::Spec->catfile($fpath, 'meta.yaml'))
+			if -e File::Spec->catfile($fpath, 'meta.yaml');
 
 		# try to load the attributes
-		foreach (grep {!/^meta\.yaml$/} $self->_futil->list_dir($self->_database->_repo->work_tree.'/'.$path, '--files-only')) {
-			# only load text files
-			my $type = $self->_futil->file_type($self->_database->_repo->work_tree.'/'.$path, '--files-only');
-			if ($type eq 'PLAIN' || $type eq 'TEXT') {
-				$doc->{$_} = $self->_futil->load_file($self->_database->_repo->work_tree.'/'.$path.'/'.$_);
+		foreach (grep {!/^meta\.yaml$/} $self->_futil->list_dir($fpath, '--files-only')) {
+			# determine file type according to extension, ignore attributes with no extension
+			my ($ext) = (m/\.([^\.]+)$/);
+			next unless $ext;
+			my $mime = $self->_mt->mimeTypeOf($ext);
+			next unless $mime;
+			
+			if ($mime->isBinary) {
+				$doc->{$_} = File::Spec->catfile($path, $_);
 			} else {
-				$doc->{$_} = $path.'/'.$_;
+				$doc->{$_} = $self->_futil->load_file(File::Spec->catfile($fpath, $_));
 			}
 		}
 	} else {
 		# try to load the meta data
-		$doc->{meta} = Load($self->_database->_repo->run('show', 'HEAD:'.$path.'/meta.yaml'))
+		$doc->{meta} = Load($self->_database->_repo->run('show', 'HEAD:'.File::Spec->catfile($path, 'meta.yaml')))
 			if grep {/^meta\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$path);
 
 		# try to load attributes (but only load text files, leave paths for binary)
-		foreach ($self->_database->_repo->run('grep', '--cached', '-I', '-l', '-e', '$\'\'', $path)) {
-			$doc->{$_} = ''.$_[0]->_database->_repo->run('show', 'HEAD:'.$path.'/'.$_);
-		}
-		# now load binary files
 		foreach (grep {!/^meta\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$path)) {
-			next unless $doc->{$_}; # this is a text file we've already loaded
-			$doc->{$_} = $path.'/'.$_;
+			# determine file type according to extension, ignore attributes with no extension
+			my ($ext) = (m/\.([^\.]+)$/);
+			next unless $ext;
+			my $mime = $self->_mt->mimeTypeOf($ext);
+			next unless $mime;
+			
+			if ($mime->isBinary) {
+				$doc->{$_} = File::Spec->catfile($path, $_);
+			} else {
+				$doc->{$_} = $self->_database->_repo->run('show', 'HEAD:'.File::Spec->catfile($path, $_));
+			}
 		}
 	}
 
 	return $doc;
 }
+
+=head1 AUTHOR
+
+Ido Perlmuter, C<< <ido at ido50.net> >>
+
+=head1 BUGS
+
+Please report any bugs or feature requests to C<bug-giddy at rt.cpan.org>, or through
+the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Giddy>. I will be notified, and then you'll
+automatically be notified of progress on your bug as I make changes.
+
+=head1 SUPPORT
+
+You can find documentation for this module with the perldoc command.
+
+	perldoc Giddy::Collection
+
+You can also look for information at:
+
+=over 4
+
+=item * RT: CPAN's request tracker
+
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Giddy>
+
+=item * AnnoCPAN: Annotated CPAN documentation
+
+L<http://annocpan.org/dist/Giddy>
+
+=item * CPAN Ratings
+
+L<http://cpanratings.perl.org/d/Giddy>
+
+=item * Search CPAN
+
+L<http://search.cpan.org/dist/Giddy/>
+
+=back
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2010 Ido Perlmuter.
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of either: the GNU General Public License as published
+by the Free Software Foundation; or the Artistic License.
+
+See http://dev.perl.org/licenses/ for more information.
+
+=cut
 
 __PACKAGE__->meta->make_immutable;

@@ -1,20 +1,32 @@
 package Giddy;
 
-# ABSTRACT: Schemaless, versioned document store based on Git.
+# ABSTRACT: Schemaless, versioned document database based on Git.
 
 use Any::Moose;
-use Carp;
+use namespace::autoclean;
+
+use File::Spec;
+use File::Util;
 use Giddy::Database;
+use Carp;
 
 =head1 NAME
 
-Giddy - Schemaless, versioned media/document store based on Git.
+Giddy - Schemaless, versioned media/document database based on Git.
 
 =head1 SYNOPSIS
 
 =head1 DESCRIPTION
 
 =head1 ATTRIBUTES
+
+=head2 _futil
+
+A L<File::Util> object to be used by the module. Automatically created.
+
+=cut
+
+has '_futil' => (is => 'ro', isa => 'File::Util', default => sub { File::Util->new });
 
 =head1 CLASS METHODS
 
@@ -37,12 +49,12 @@ sub get_database {
 		unless $path;
 
 	# is this an existing database or a new one?
-	if (-d $path) {
+	if (-d $path && -d File::Spec->catdir($path, '.git')) {
 		# existing
-		return Giddy::Database->new(_repo => Git::Repository->new(work_tree => $path));
+		return Giddy::Database->new(_repo => Git::Repository->new(work_tree => $path), _futil => $self->_futil);
 	} else {
 		# new one
-		return Giddy::Database->new(_repo => Git::Repository->create(init => $path));
+		return Giddy::Database->new(_repo => Git::Repository->create(init => $path), _futil => $self->_futil);
 	}
 }
 
