@@ -1,20 +1,32 @@
-#!/usr/bin/perl -w
+#!perl -T
 
-use lib '/home/ido/git/Giddy/lib';
 use warnings;
 use strict;
+use Test::More tests => 10;
 use Giddy;
 
-# create a new Giddy repository
+# create a new Giddy object
 my $g = Giddy->new;
+ok($g, 'Got a proper Giddy object');
 
+# create a Giddy database
 my $db = $g->get_database('/tmp/giddy-test');
-my $coll = $db->get_collection('/collection');
+is(ref($db->_repo), 'Git::Repository', 'Created a new Giddy database');
 
-# create a new file
+# create a Giddy collection
+my $coll = $db->get_collection('/collection');
+is($coll->path, 'collection', 'Created a new Giddy collection');
+ok(-d '/tmp/giddy-test/collection', 'New collection has a directory in the filesystem');
+
+# create some articles
 my $html_p = $coll->insert_article('index.html', 'whatever the fuck ever', { user => 'ido50', date => '12-12-12T12:12:12+03:00' });
+is($html_p, 'collection/index.html', 'Created an html article');
+
 my $json_p = $coll->insert_article('index.json', '{ how: "so" }');
+ok(-e '/tmp/giddy-test/collection/index.json', 'Created a json article');
+
 my $text_p = $coll->insert_article('asdf.txt', 'asdf', { asdf => 'AsDf' });
+is($text_p, 'collection/asdf.txt', 'Create a text article');
 
 # commit the changes
 $db->commit( "Testing a commit" );
