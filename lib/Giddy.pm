@@ -42,10 +42,9 @@ sub get_database {
 	my ($self, $path) = @_;
 
 	# remove trailing slash, if exists
-	$path ||= '';
-	$path =~ s!/$!!;
+	$path =~ s!/$!! if $path;
 
-	croak "You must provide a path to the Giddy database."
+	croak "You must provide the path to the Giddy database."
 		unless $path;
 
 	# is this an existing database or a new one?

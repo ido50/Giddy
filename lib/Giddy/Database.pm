@@ -43,32 +43,25 @@ has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
 sub get_collection {
 	my ($self, $path) = @_;
 
-	$path ||= '';
+	$path ||= '/';
 
 	# remove trailing slash from path, if exists
-	$path =~ s!/$!!;
-	# remove starting slash from path, if exists
-	$path =~ s!^/!!;
+	unless ($path eq '/') {
+		my $spath = $path;
+		# remove trailing slash (if exists)
+		$spath =~ s!/$!!;
+		# remove starting slash (if exists)
+		$spath =~ s!^/!!;
 
-	croak "Can't find the collection's parent."
-		if $path =~ m!/[^/]+$! && !-d File::Spec->catdir($self->_repo->work_tree, $`);
+		if (-d File::Spec->catdir($self->_repo->work_tree, $spath) && -e File::Spec->catdir($self->_repo->work_tree, $spath, 'attributes.yaml')) {
+			croak "The collection path exists in the database as a document directory, can't load it as a collection.";
+		}
 
-	# is this an existing collection, or a new one?
-	if (-d File::Spec->catdir($self->_repo->work_tree, $path)) {
-		# make sure this is a collection and not a document
-		croak "Path describes a document and not a collection."
-			if -e File::Spec->catfile($self->_repo->work_tree, $path, 'meta.yaml');
-
-		return Giddy::Collection->new(_database => $self, path => $path, _futil => $self->_futil);
-	} else {
-		# create the collection
-		$self->_futil->make_dir(File::Spec->catdir($self->_repo->work_tree, $path), 0775);
-
-		# mark the directory as to be stages
-		$self->mark($path);
-
-		return Giddy::Collection->new(_database => $self, path => $path, _futil => $self->_futil);
+		# create the collection directory (unless it already exists)
+		$self->_futil->make_dir(File::Spec->catdir($self->_repo->work_tree, $spath), 0775, '--if-not-exists');
 	}
+
+	return Giddy::Collection->new(_database => $self, path => $path, _futil => $self->_futil);
 }
 
 =head2 commit( [$commit_msg] )
@@ -132,17 +125,18 @@ is not provided.
 sub find {
 	my ($self, $path, $opts) = @_;
 
-	croak "find() expected a hash-ref for options, but received ".ref($opts)
+	croak "You must provide a path (not the root path) to find in the Giddy database."
+		unless $path && $path ne '/';
+
+	croak "find() expected a hash-ref of options, but received ".ref($opts)
 		if $opts && ref $opts ne 'HASH';
 
-	$path ||= '';
 	$opts ||= {};
 
 	# in which directory are we searching?
 	my ($file) = ($path =~ m!/([^/]+)$!);
 	$file = $path unless $file;
-	my $dir = $` || '';
-	$dir =~ s!^/!!;
+	my $dir = $` || '/';
 
 	return $self->get_collection($dir)->find($file, $opts);
 }

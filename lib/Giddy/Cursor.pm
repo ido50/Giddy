@@ -179,10 +179,10 @@ Loads a document/article from a result hash-ref.
 sub _load_result {
 	my ($self, $result) = @_;
 
-	if ($result->{article}) {
-		return $self->_query->{coll}->_load_article($result->{article}, $self->_query->{opts}->{working});
-	} elsif ($result->{document}) {
-		return $self->_query->{coll}->_load_document($result->{document}, $self->_query->{opts}->{working});
+	if ($result->{document_file}) {
+		return $self->_query->{coll}->_load_document_file($result->{document_file}, $self->_query->{opts}->{working});
+	} elsif ($result->{document_dir}) {
+		return $self->_query->{coll}->_load_document_dir($result->{document_dir}, $self->_query->{opts}->{working});
 	}
 }
 
