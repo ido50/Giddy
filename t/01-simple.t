@@ -12,7 +12,7 @@ has_git();
 
 plan tests => 23;
 
-my $tmpdir = tempdir();#CLEANUP => 1);
+my $tmpdir = tempdir(CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
 
 # create a new Giddy object
