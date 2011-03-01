@@ -121,7 +121,7 @@ sub get {
 	$path = '' if !$path || $path eq '/';
 	$opts ||= {};
 
-	my @files = $self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:');
+	my @files = $opts->{working} ? $self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath)) : $self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:');
 	my $cursor = Giddy::Cursor->new(_query => { path => $path, coll => $self, opts => $opts });
 
 	# what kind of match are we performing? do we search for things
@@ -131,20 +131,30 @@ sub get {
 	foreach (@files) {
 		if (m/$re/) {
 			my $full_path = File::Spec->catfile($self->path, $_);
-			my $search_path = $full_path;
-			$search_path =~ s!^/!!;
+			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
 
-			# what is the type of this thing?
-			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
-			if ($t eq 'tree') {
-				# this is either a collection or a document
-				if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
-					# great, this is a document directory, let's add it
+			if ($opts->{working}) {
+				# what is the type of this thing?
+				if (-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path) && -e File::Spec->catfile($self->_database->_repo->work_tree, $search_path, 'attributes.yaml')) {
+					# this is a document directory
 					$cursor->_add_result({ document_dir => $full_path });
+				} elsif (!-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path)) {
+					# this is a document file
+					$cursor->_add_result({ document_file => $full_path });
 				}
-			} elsif ($t eq 'blob') {
-				# cool, this is a document file
-				$cursor->_add_result({ document_file => $full_path });
+			} else {
+				# what is the type of this thing?
+				my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
+				if ($t eq 'tree') {
+					# this is either a collection or a document
+					if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
+						# great, this is a document directory, let's add it
+						$cursor->_add_result({ document_dir => $full_path });
+					}
+				} elsif ($t eq 'blob') {
+					# cool, this is a document file
+					$cursor->_add_result({ document_file => $full_path });
+				}
 			}
 		}
 	}
@@ -173,7 +183,7 @@ sub find {
 	my $cursor = Giddy::Cursor->new(_query => { coll => $self, opts => $opts });
 
 	if ($opts->{working}) {
-		foreach ($self->_futil->list_dir(File::Spec->catfile($self->_database->_repo->work_tree, $self->spath))) {
+		foreach ($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath))) {
 			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->spath, $_);
 			my $full_path = File::Spec->catfile($self->path, $_);
 
@@ -232,6 +242,44 @@ sub find {
 
 sub find_one {
 	shift->find(@_)->first;
+}
+
+=head2 grep( \@query, [ \%options ] )
+
+=cut
+
+sub grep {
+	my ($self, $query, $opts) = @_;
+
+	$query ||= [];
+	$opts ||= {};
+
+	my $cursor = Giddy::Cursor->new(_query => { coll => $self, opts => $opts });
+
+	my @query_str;
+	foreach (@$query) {
+		if (ref $_ eq 'ARRAY') {
+			my $str = '( ';
+			foreach my $re (@$_) {
+				$str .= "-e '$re'";
+			}
+			$str .= ' )';
+			push(@query_str, $str);
+		} elsif (!ref $_) {
+			push(@query_str, "-e '$_'");
+		}
+	}
+
+	# WE NEED TO SEARCH BOTH IN DOCUMENT FILES (EASY) AND ALSO IN
+	# DOCUMENT DIRS (HARD), SO WE NEED TO FIRST MAKE AN git-ls-tree COMMAND
+	# TO GET A LIST OF DIRECTORIES IN THE COLLECTION AND GO OVER IT, WHEN WE
+	# SEE A DIRECTORY THAT HAS attributes.yaml IN IT, WE RUN git-grep ON IT.
+	# WE ALSO RUN git-grep ON THE COLLECTION'S DIRECTORY TO FIND FILES
+	# THAT MATCH THE QUERY
+
+	#my @files = $opts->{working} ? $self->_database->_repo->run('grep', '--name-only', join(' --and ', @query_str), $self->spath) : $self->_database->_repo->run('grep', '--name-only', '--cached', join(' --and ', @query_str), $self->spath);
+
+	return $cursor;
 }
 
 =head2 spath()
