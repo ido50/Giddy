@@ -28,11 +28,17 @@ This is a required attribute.
 
 A L<File::Util> object to be used by the module. Required.
 
+=head2 _marked
+
+A list of paths to add to the next commit job. Automatically created.
+
 =cut
 
 has '_repo' => (is => 'ro', isa => 'Git::Repository', required => 1);
 
 has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
+
+has '_marked' => (is => 'ro', isa => 'ArrayRef[Str]', default => sub { [] }, writer => '_set_marked');
 
 =head1 OBJECT METHODS
 
@@ -75,17 +81,20 @@ changes.
 sub commit {
 	my ($self, $msg) = @_;
 
-	return unless scalar @{$self->{marked}};
+	return unless scalar @{$self->_marked};
 
-	$msg ||= "Commiting ".scalar(@{$self->{marked}})." changes";
+	$msg ||= "Commiting ".scalar(@{$self->_marked})." changes";
 
 	# stage the files
-	foreach (@{$self->{marked}}) {
+	foreach (@{$self->_marked}) {
 		$self->_repo->run('add', $_);
 	}
 
 	# commit
 	$self->_repo->run('commit', '-m', $msg);
+
+	# clear marked list
+	$self->_set_marked([]);
 
 	return 1;
 }
@@ -110,10 +119,12 @@ sub mark {
 		s!^/!!;
 	}
 
-	push(@{$self->{marked}}, @paths);
+	my $marked = $self->_marked;
+	push(@$marked, @paths);
+	$self->_set_marked($marked);
 }
 
-=head2 find( [ $path, [\%options] ] )
+=head2 get( [ $path, [\%options] ] )
 
 Searches the Giddy repository for I<anything> that matches the provided
 path. The path has to be relative to the repository's root directory, which
@@ -122,7 +133,7 @@ is not provided.
 
 =cut
 
-sub find {
+sub get {
 	my ($self, $path, $opts) = @_;
 
 	croak "You must provide a path (not the root path) to find in the Giddy database."
@@ -138,15 +149,15 @@ sub find {
 	$file = $path unless $file;
 	my $dir = $` || '/';
 
-	return $self->get_collection($dir)->find($file, $opts);
+	return $self->get_collection($dir)->get($file, $opts);
 }
 
-=head2 find_one( $path, [\%options] )
+=head2 get_one( $path, [\%options] )
 
 =cut
 
-sub find_one {
-	shift->find(@_)->first;
+sub get_one {
+	shift->get(@_)->first;
 }
 
 =head1 AUTHOR
@@ -189,7 +200,7 @@ L<http://search.cpan.org/dist/Giddy/>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2010 Ido Perlmuter.
+Copyright 2011 Ido Perlmuter.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published

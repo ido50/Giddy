@@ -10,7 +10,7 @@ use Test::Git;
 
 has_git();
 
-plan tests => 23;
+plan tests => 42;
 
 my $tmpdir = tempdir(CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -42,14 +42,14 @@ is($text_p, '/collection/asdf.txt', 'Create a text article');
 $db->commit( "Testing a commit" );
 
 # take a look at the contents of the articles
-my $html = $db->find_one($html_p);
+my $html = $db->get_one($html_p);
 is($html->{_body}, '<h1>Giddy</h1>', 'HTML cached content OK');
 is($html->{user}, 'gitguy', 'HTML attributes OK');
 
-my $json = $db->find_one($json_p, { working => 1 });
+my $json = $db->get_one($json_p, { working => 1 });
 is($json->{_body}, '{ how: "so" }', 'JSON working content OK');
 
-my $text = $db->find_one($text_p);
+my $text = $db->get_one($text_p);
 is($text->{_path}, $text_p, 'Text article loaded OK');
 
 # get the root collection
@@ -57,13 +57,13 @@ my $root = $db->get_collection;
 is($root->path, '/', 'Root collection received OK');
 
 # create a new document
-my $doc_p = $root->insert('about', { 'subject' => 'About Giddy', 'text' => '<p>This is stupid</p>', date => '12-12-12T12:15:56+03:00' });
+my $doc_p = $root->insert('about', { subject => 'About Giddy', text => '<p>This is stupid</p>', date => '12-12-12T12:15:56+03:00' });
 is($doc_p, '/about', 'Document created OK');
 ok(-d File::Spec->catdir($tmpdir, 'about'), 'Document has a directory in the filesystem');
 ok(-e File::Spec->catdir($tmpdir, 'about', 'attributes.yaml'), 'Document has an attributes.yaml file');
 
 # search for the document before commiting
-my $c1 = $db->find($doc_p);
+my $c1 = $db->get($doc_p);
 is($c1->count, 0, 'Document cannot be found before commiting');
 
 # add a fake binary file to the document
@@ -75,18 +75,20 @@ close FILE;
 $db->commit( "Testing another commit" );
 
 # now find the document
-my $doc = $root->find_one('about');
+my $doc = $root->get_one('about');
 ok($doc, 'Document now found');
 is($doc->{'subject'}, 'About Giddy', 'Document loaded OK');
 is($doc->{'binary'}, '/about/binary', 'Document has binary reference OK');
 
 # search for some stuff
-my $c2 = $db->find('/collection/index.html');
+my $c2 = $db->get('/collection/index.html');
 is($c2->count, 1, 'Article found OK');
 
 # drop the collection
 $coll->drop;
 ok(!-e File::Spec->catdir($tmpdir, 'collection'), 'Collection dropped OK');
+
+$db->commit('Dropped a collection');
 
 # try to drop the root collection (should fail)
 eval { $root->drop; };
@@ -95,3 +97,63 @@ ok($@ && $@ =~ m/You cannot drop the root collection/, 'Root collection cannot b
 # try to load the about article as a collection (should fail)
 eval { $db->get_collection('about'); };
 ok($@ && $@ =~ m/The collection path exists in the database as a document directory/, "Can't load a document as a collection");
+
+# create some documents
+$root->insert('one', { subject => 'Lorem Ipsum', text => 'Dolor Sit Amet', regex => qr/^asdf$/ });
+$root->insert('two', { title => 'Adventureland', starring => ['Jesse Eisenberg', 'Kristen Stewart'], year => 2009, imdb_score => 7.1 });
+$root->insert('three', { subject => '2009 Movies', text => "I don't know, there were many." });
+$root->insert('four', { title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8 });
+$root->insert('five', { title => 'Superbad', starring => ['Jonah Hill', 'Michael Cera', 'Emma Stone'], year => 2007 });
+
+$db->commit('created some documents');
+
+# let's perform different find queries
+my $f1 = $root->find({ imdb_score => { '$exists' => 1 } });
+my @r1 = $f1->all;
+is($f1->count, 2, 'Got 2 results as expected when searching by $exists => 1');
+ok(($r1[0]->{_path} eq '/two' && $r1[1]->{_path} eq '/four') || ($r1[1]->{_path} eq '/two' && $r1[0]->{_path} eq '/four'), 'Got the correct results when searching by $exists => 1');
+
+my $f2 = $root->find({ imdb_score => { '$exists' => 0 } });
+is($f2->count, 4, 'Got 4 results as expected when searching by $exists => 0');
+
+my $f3 = $root->find({ imdb_score => { '$gt' => 7.5 } });
+is_deeply([$f3->all], [{ _path => '/four', title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8 }], 'Got the correct result when searching by $gt => 7.5');
+
+my $f4 = $root->find({ starring => 'Jesse Eisenberg' });
+my @r4 = $f4->all;
+is($f4->count, 2, 'Got 2 results as expected when searching by starring => Jesse Eisenberg');
+ok(($r4[0]->{_path} eq '/two' && $r4[1]->{_path} eq '/four') || ($r4[1]->{_path} eq '/two' && $r4[0]->{_path} eq '/four'), 'Got the correct results when searching by starring => Jesse Eisenberg');
+
+my $f5 = $root->find({ subject => qr/Movies/i });
+is($f5->count, 1, 'Got 1 result as expected when searching by subject => qr/Movies/i');
+is(($f5->all)[0]->{_path}, '/three', 'Got the correct result when searching by subject => qr/Movies/i');
+
+my $f6 = $root->find({ year => { '$gte' => 2009 }, starring => qr/^Kristen/ });
+is($f6->count, 1, 'Got 1 result as expected when searching by year => { $gte => 2009 }, starring => qr/^Kristen/');
+is(($f6->all)[0]->{_path}, '/two', 'Got the correct result when searching by year => { $gte => 2009 }, starring => qr/^Kristen/');
+
+my $f7 = $root->find({ subject => { '$ne' => 'Lorem Ipsum' } });
+my @f7 = $f7->all;
+is($f7->count, 2, 'Got 2 results as expected when searching by subject => { $ne => Lorem Ipsum }');
+ok(($f7[0]->{subject} eq '2009 Movies' && $f7[1]->{subject} eq 'About Giddy') || ($f7[1]->{subject} eq '2009 Movies' && $f7[0]->{subject} eq 'About Giddy'), 'Got the correct results when searching by subject => { $ne => Lorem Ipsum }');
+
+my $f8 = $root->find({ starring => { '$size' => 3 }, year => { '$nin' => [2006 .. 2008] } });
+my @f8 = $f8->all;
+is($f8->count, 1, 'Got 1 result as expected when searching by starring => { $size => 3 }, year => { $nin => [2006 .. 2008] }');
+is($f8[0]->{_path}, '/four', 'Got the correct result when searching by starring => { $size => 3 }, year => { $nin => [2006 .. 2008] }');
+
+my $f9 = $root->find({ starring => { '$all' => ['Jesse Eisenberg', 'Woody Harrelson'] } });
+my @f9 = $f9->all;
+is($f9->count, 1, 'Got 1 result as expected when searching by starring => { $all => [Jesse Eisenberg, Woody Harrelson] }');
+is($f9[0]->{title}, 'Zombieland', 'Got the correct result when searching by starring => { $all => [Jesse Eisenberg, Woody Harrelson] }');
+
+my $f10 = $root->find({ regex => { '$type' => 11 } });
+my @f10 = $f10->all;
+is($f10->count, 1, 'Got 1 result as expected when searching by regex => { $type => 11 }');
+is($f10[0]->{_path}, '/one', 'Got the correct result when searching by regex => { $type => 11 }');
+
+my $f11 = $root->find({ starring => { '$type' => 4 } });
+my @f11 = $f11->all;
+is($f11->count, 3, 'Got 3 results as expected when searching by starring => { $type => 4 }');
+
+done_testing();

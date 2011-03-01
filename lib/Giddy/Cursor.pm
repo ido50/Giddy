@@ -44,6 +44,8 @@ has '_query' => (is => 'ro', isa => 'HashRef', required => 1);
 
 has '_loc' => (is => 'ro', isa => 'Int', default => 0, writer => '_set_loc');
 
+has '_loaded' => (is => 'ro', isa => 'HashRef[HashRef]', default => sub { {} }, writer => '_set_loaded');
+
 =head1 OBJECT METHODS
 
 =head2 all()
@@ -180,10 +182,34 @@ sub _load_result {
 	my ($self, $result) = @_;
 
 	if ($result->{document_file}) {
-		return $self->_query->{coll}->_load_document_file($result->{document_file}, $self->_query->{opts}->{working});
+		if (exists $self->_loaded->{$result->{document_file}}) {
+			return $self->_loaded->{$result->{document_file}};
+		} else {
+			my $doc = $self->_query->{coll}->_load_document_file($result->{document_file}, $self->_query->{opts}->{working});
+			$self->_add_loaded($doc);
+			return $doc;
+		}
 	} elsif ($result->{document_dir}) {
-		return $self->_query->{coll}->_load_document_dir($result->{document_dir}, $self->_query->{opts}->{working});
+		if (exists $self->_loaded->{$result->{document_dir}}) {
+			return $self->_loaded->{$result->{document_dir}};
+		} else {
+			my $doc = $self->_query->{coll}->_load_document_dir($result->{document_dir}, $self->_query->{opts}->{working});
+			$self->_add_loaded($doc);
+			return $doc;
+		}
 	}
+}
+
+=head2 _add_loaded( \%doc )
+
+Adds the loaded document to the cursor
+
+=cut
+
+sub _add_loaded {
+	my ($self, $doc) = @_;
+
+	$self->_loaded->{$doc->{_path}} = $doc;
 }
 
 =head1 AUTHOR
@@ -226,7 +252,7 @@ L<http://search.cpan.org/dist/Giddy/>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2010 Ido Perlmuter.
+Copyright 2011 Ido Perlmuter.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published

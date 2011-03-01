@@ -12,6 +12,8 @@ use File::Util;
 use Try::Tiny;
 use Carp;
 
+with 'Giddy::Role::QueryParser';
+
 =head1 NAME
 
 Giddy::Collection - A Giddy collection.
@@ -101,7 +103,7 @@ sub insert {
 	return File::Spec->catdir($self->path, $filename);
 }
 
-=head2 find( [ $path, [\%options] ] )
+=head2 get( [ $path, [\%options] ] )
 
 Searches the Giddy repository for I<anything> that matches the provided
 path. The path has to be relative to the repository's root directory, which
@@ -110,7 +112,7 @@ is not provided.
 
 =cut
 
-sub find {
+sub get {
 	my ($self, $path, $opts) = @_;
 
 	croak "find() expected a hash-ref for options, but received ".ref($opts)
@@ -150,7 +152,81 @@ sub find {
 	return $cursor;
 }
 
-=head2 find_one( $path, [\%options] )
+=head2 get_one( $path, [ \%options ] )
+
+=cut
+
+sub get_one {
+	shift->get(@_)->first;
+}
+
+=head2 find( [ \%query, \%options ] )
+
+=cut
+
+sub find {
+	my ($self, $query, $opts) = @_;
+
+	$query ||= {};
+	$opts ||= {};
+
+	my $cursor = Giddy::Cursor->new(_query => { coll => $self, opts => $opts });
+
+	if ($opts->{working}) {
+		foreach ($self->_futil->list_dir(File::Spec->catfile($self->_database->_repo->work_tree, $self->spath))) {
+			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->spath, $_);
+			my $full_path = File::Spec->catfile($self->path, $_);
+
+			# what is the type of this doc?
+			my $t;
+			if (-d $fs_path && -e File::Spec->catfile($fs_path, 'attributes.yaml')) {
+				# this is a document dir
+				my $doc = $self->_load_document_dir($full_path, 1);
+				if ($self->_document_matches($doc, $query)) {
+					$cursor->_add_result({ document_dir => $full_path });
+					$cursor->_add_loaded($doc);
+				}
+			} elsif (!-d $fs_path) {
+				# this is a document file
+				my $doc = $self->_load_document_file($full_path, 1);
+				if ($self->_document_matches($doc, $query)) {
+					$cursor->_add_result({ document_dir => $full_path });
+					$cursor->_add_loaded($doc);
+				}
+			}
+		}
+	} else {
+		foreach ($self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:')) {
+			my $full_path = File::Spec->catfile($self->path, $_);
+			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
+
+			# what is the type of this thing?
+			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
+			if ($t eq 'tree') {
+				# this is either a collection or a document
+				if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
+					# great, this is a document directory, let's add it
+					my $doc = $self->_load_document_dir($full_path);
+					if ($self->_document_matches($doc, $query)) {
+						$cursor->_add_result({ document_dir => $full_path });
+						$cursor->_add_loaded($doc);
+					}
+				}
+			} elsif ($t eq 'blob') {
+				# cool, this is a document file
+				my $doc = $self->_load_document_file($full_path);
+				if ($self->_document_matches($doc, $query)) {
+					$cursor->_add_result({ document_file => $full_path });
+					$cursor->_add_loaded($doc);
+				}
+			}
+		}
+	}
+
+	return $cursor;
+}
+
+=head2 find_one( [ \%query, \%options ] )
 
 =cut
 
@@ -300,7 +376,7 @@ L<http://search.cpan.org/dist/Giddy/>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2010 Ido Perlmuter.
+Copyright 2011 Ido Perlmuter.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published
