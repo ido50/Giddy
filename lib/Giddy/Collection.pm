@@ -269,6 +269,7 @@ sub grep {
 			push(@query_str, "-e '$_'");
 		}
 	}
+	my $query_str = join(' --and ', @query_str);
 
 	# WE NEED TO SEARCH BOTH IN DOCUMENT FILES (EASY) AND ALSO IN
 	# DOCUMENT DIRS (HARD), SO WE NEED TO FIRST MAKE AN git-ls-tree COMMAND
@@ -276,10 +277,62 @@ sub grep {
 	# SEE A DIRECTORY THAT HAS attributes.yaml IN IT, WE RUN git-grep ON IT.
 	# WE ALSO RUN git-grep ON THE COLLECTION'S DIRECTORY TO FIND FILES
 	# THAT MATCH THE QUERY
+	if ($opts->{working}) {
+		# start with document files
+		my $spath = $self->spath;
+		foreach ($self->_database->_repo->run('grep', '--name-only', $query_str, $self->spath)) {
+			$_ = '/'.$_ unless m!^/!;
+			$cursor->_add_result({ document_file => $_ });
+		}
 
-	#my @files = $opts->{working} ? $self->_database->_repo->run('grep', '--name-only', join(' --and ', @query_str), $self->spath) : $self->_database->_repo->run('grep', '--name-only', '--cached', join(' --and ', @query_str), $self->spath);
+		# now look at document directories
+		foreach ($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath))) {
+			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->spath, $_);
+			my $full_path = File::Spec->catfile($self->path, $_);
+
+			# what is the type of this doc?
+			if (-d $fs_path && -e File::Spec->catfile($fs_path, 'attributes.yaml')) {
+				# this is a document directory, but does it
+				# match the query?
+				if ($self->_database->_repo->run('grep', '--name-only', $query_str, File::Spec->catfile($self->spath, $_))) {
+					$cursor->_add_result({ document_dir => $full_path });
+				}
+			}
+		}
+	} else {
+		# start with document files
+		my $spath = $self->spath;
+		foreach ($self->_database->_repo->run('grep', '--name-only', '--cached', $query_str, $self->spath)) {
+			$_ = '/'.$_ unless m!^/!;
+			$cursor->_add_result({ document_file => $_ });
+		}
+
+		# now look at document directories
+		foreach ($self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:')) {
+			my $full_path = File::Spec->catfile($self->path, $_);
+			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
+
+			# what is the type of this thing?
+			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
+			if ($t eq 'tree' && grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
+				# this is a document directory, but does it
+				# match the query?
+				if ($self->_database->_repo->run('grep', '--name-only', '--cached', $query_str, $search_path)) {
+					$cursor->_add_result({ document_dir => $full_path });
+				}
+			}
+		}
+	}
 
 	return $cursor;
+}
+
+=head2 grep_one( \@query, [ \%options ] )
+
+=cut
+
+sub grep_one {
+	shift->grep(@_)->first;
 }
 
 =head2 spath()
