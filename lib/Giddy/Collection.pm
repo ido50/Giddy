@@ -103,140 +103,47 @@ sub insert {
 	return File::Spec->catdir($self->path, $filename);
 }
 
-=head2 get( [ $path, [\%options] ] )
+=head2 find( [ $name, \%options ] )
 
-Searches the Giddy repository for I<anything> that matches the provided
-path. The path has to be relative to the repository's root directory, which
-is considered the empty string. The empty string will be used if a path
-is not provided.
-
-=cut
-
-sub get {
-	my ($self, $path, $opts) = @_;
-
-	croak "find() expected a hash-ref for options, but received ".ref($opts)
-		if $opts && ref $opts ne 'HASH';
-
-	$path = '' if !$path || $path eq '/';
-	$opts ||= {};
-
-	my @files = $opts->{working} ? $self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath)) : $self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:');
-	my $cursor = Giddy::Cursor->new(_query => { path => $path, coll => $self, opts => $opts });
-
-	# what kind of match are we performing? do we search for things
-	# that start with $path, or do we search for $path anywhere?
-	my $re = $opts->{prefix} ? qr/^$path/ : qr/$path/;
-
-	foreach (@files) {
-		if (m/$re/) {
-			my $full_path = File::Spec->catfile($self->path, $_);
-			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
-
-			if ($opts->{working}) {
-				# what is the type of this thing?
-				if (-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path) && -e File::Spec->catfile($self->_database->_repo->work_tree, $search_path, 'attributes.yaml')) {
-					# this is a document directory
-					$cursor->_add_result({ document_dir => $full_path });
-				} elsif (!-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path)) {
-					# this is a document file
-					$cursor->_add_result({ document_file => $full_path });
-				}
-			} else {
-				# what is the type of this thing?
-				my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
-				if ($t eq 'tree') {
-					# this is either a collection or a document
-					if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
-						# great, this is a document directory, let's add it
-						$cursor->_add_result({ document_dir => $full_path });
-					}
-				} elsif ($t eq 'blob') {
-					# cool, this is a document file
-					$cursor->_add_result({ document_file => $full_path });
-				}
-			}
-		}
-	}
-
-	return $cursor;
-}
-
-=head2 get_one( $path, [ \%options ] )
-
-=cut
-
-sub get_one {
-	shift->get(@_)->first;
-}
+Searches the Giddy repository for documents that match the provided
+file name. If C<$name> is empty or not provided, every document in the
+collection will be matched.
 
 =head2 find( [ \%query, \%options ] )
+
+Searches the Giddy repository for documents that match the provided query.
+If no query is given, every document in the collection will be matched.
+
+Both methods return a L<Giddy::Cursor> object.
+
+Searching by name is much faster than searching by query, as Giddy isn't
+forced to load and deserialize every document.
 
 =cut
 
 sub find {
 	my ($self, $query, $opts) = @_;
 
-	$query ||= {};
+	croak "find() expected a hash-ref for options, but received ".ref($opts)
+		if $opts && ref $opts ne 'HASH';
+
+	$query ||= '';
 	$opts ||= {};
 
-	my $cursor = Giddy::Cursor->new(_query => { coll => $self, opts => $opts });
-
-	if ($opts->{working}) {
-		foreach ($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath))) {
-			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->spath, $_);
-			my $full_path = File::Spec->catfile($self->path, $_);
-
-			# what is the type of this doc?
-			my $t;
-			if (-d $fs_path && -e File::Spec->catfile($fs_path, 'attributes.yaml')) {
-				# this is a document dir
-				my $doc = $self->_load_document_dir($full_path, 1);
-				if ($self->_document_matches($doc, $query)) {
-					$cursor->_add_result({ document_dir => $full_path });
-					$cursor->_add_loaded($doc);
-				}
-			} elsif (!-d $fs_path) {
-				# this is a document file
-				my $doc = $self->_load_document_file($full_path, 1);
-				if ($self->_document_matches($doc, $query)) {
-					$cursor->_add_result({ document_dir => $full_path });
-					$cursor->_add_loaded($doc);
-				}
-			}
-		}
+	if (ref $query && ref $query eq 'HASH') {
+		return $self->_match_by_query($query, $opts);
 	} else {
-		foreach ($self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:')) {
-			my $full_path = File::Spec->catfile($self->path, $_);
-			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
-
-			# what is the type of this thing?
-			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
-			if ($t eq 'tree') {
-				# this is either a collection or a document
-				if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
-					# great, this is a document directory, let's add it
-					my $doc = $self->_load_document_dir($full_path);
-					if ($self->_document_matches($doc, $query)) {
-						$cursor->_add_result({ document_dir => $full_path });
-						$cursor->_add_loaded($doc);
-					}
-				}
-			} elsif ($t eq 'blob') {
-				# cool, this is a document file
-				my $doc = $self->_load_document_file($full_path);
-				if ($self->_document_matches($doc, $query)) {
-					$cursor->_add_result({ document_file => $full_path });
-					$cursor->_add_loaded($doc);
-				}
-			}
-		}
+		return $self->_match_by_name($query, $opts);
 	}
-
-	return $cursor;
 }
 
+=head2 find_one( [ $name, \%options ] )
+
+Same as calling C<< find($name, $options)->first() >>.
+
 =head2 find_one( [ \%query, \%options ] )
+
+Same as calling C<< find($query, $options)->first() >>.
 
 =cut
 
@@ -244,82 +151,72 @@ sub find_one {
 	shift->find(@_)->first;
 }
 
-=head2 grep( \@query, [ \%options ] )
+=head2 grep( [ \@strings, \%options ] )
+
+Finds documents whose file contents (ignoring attributes and database YAML
+structure) match all (or any, depending on C<\%options>) of the provided
+strings. This is much faster than using C<find()> as it simply uses the
+git-grep command, but is obviously less useful.
+
+=head2 grep( [ $string, \%options ] )
+
+Finds documents whose file contents (ignoring attributes and database YAML
+structure) match the provided string. This is much faster than using C<find()> as it simply uses the
+git-grep command, but is obviously less useful.
+
+Both methods return a L<Giddy::Cursor> object.
 
 =cut
 
 sub grep {
 	my ($self, $query, $opts) = @_;
 
+	croak "grep() expected a hash-ref for options, but received ".ref($opts)
+		if $opts && ref $opts ne 'HASH';
+
 	$query ||= [];
+	$query = [$query] if !ref $query;
 	$opts ||= {};
 
-	my $cursor = Giddy::Cursor->new(_query => { coll => $self, opts => $opts });
+	my $cursor = Giddy::Cursor->new(_query => { grep => $query, coll => $self, opts => $opts });
 
-	my @query_str;
-	foreach (@$query) {
-		if (ref $_ eq 'ARRAY') {
-			my $str = '( ';
-			foreach my $re (@$_) {
-				$str .= "-e '$re'";
-			}
-			$str .= ' )';
-			push(@query_str, $str);
-		} elsif (!ref $_) {
-			push(@query_str, "-e '$_'");
+	my @cmd = ('grep', '-I', '--name-only', '--max-depth', 1);
+	push(@cmd, '--all-match') unless $opts->{'or'}; # that's how we do an 'and' search'
+	push(@cmd, '--cached') unless $opts->{'working'};
+
+	if (scalar @$query) {
+		foreach (@$query) {
+			push(@cmd, '-e', $_);
 		}
+	} else {
+		push(@cmd, '-e', '');
 	}
-	my $query_str = join(' --and ', @query_str);
 
-	# WE NEED TO SEARCH BOTH IN DOCUMENT FILES (EASY) AND ALSO IN
-	# DOCUMENT DIRS (HARD), SO WE NEED TO FIRST MAKE AN git-ls-tree COMMAND
-	# TO GET A LIST OF DIRECTORIES IN THE COLLECTION AND GO OVER IT, WHEN WE
-	# SEE A DIRECTORY THAT HAS attributes.yaml IN IT, WE RUN git-grep ON IT.
-	# WE ALSO RUN git-grep ON THE COLLECTION'S DIRECTORY TO FIND FILES
-	# THAT MATCH THE QUERY
+	push(@cmd, { cwd => File::Spec->catdir($self->_database->_repo->work_tree, $self->spath) }) if $self->spath;
+
+	my $docs = {};
 	if ($opts->{working}) {
-		# start with document files
-		my $spath = $self->spath;
-		foreach ($self->_database->_repo->run('grep', '--name-only', $query_str, $self->spath)) {
-			$_ = '/'.$_ unless m!^/!;
-			$cursor->_add_result({ document_file => $_ });
-		}
-
-		# now look at document directories
-		foreach ($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath))) {
-			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->spath, $_);
-			my $full_path = File::Spec->catfile($self->path, $_);
-
-			# what is the type of this doc?
-			if (-d $fs_path && -e File::Spec->catfile($fs_path, 'attributes.yaml')) {
-				# this is a document directory, but does it
-				# match the query?
-				if ($self->_database->_repo->run('grep', '--name-only', $query_str, File::Spec->catfile($self->spath, $_))) {
-					$cursor->_add_result({ document_dir => $full_path });
-				}
+		foreach ($self->_database->_repo->run(@cmd)) {
+			if (m!/!) {
+				next if $docs->{$`};
+				$cursor->_add_result({ document_dir => File::Spec->catdir($self->path, $`) });
+				$docs->{$`} = 1;
+			} else {
+				next if $docs->{$_};
+				$cursor->_add_result({ document_file => File::Spec->catfile($self->path, $_) });
+				$docs->{$_} = 1;
 			}
 		}
 	} else {
-		# start with document files
-		my $spath = $self->spath;
-		foreach ($self->_database->_repo->run('grep', '--name-only', '--cached', $query_str, $self->spath)) {
-			$_ = '/'.$_ unless m!^/!;
-			$cursor->_add_result({ document_file => $_ });
-		}
-
-		# now look at document directories
-		foreach ($self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:')) {
-			my $full_path = File::Spec->catfile($self->path, $_);
-			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
-
-			# what is the type of this thing?
-			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
-			if ($t eq 'tree' && grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
-				# this is a document directory, but does it
-				# match the query?
-				if ($self->_database->_repo->run('grep', '--name-only', '--cached', $query_str, $search_path)) {
-					$cursor->_add_result({ document_dir => $full_path });
-				}
+		foreach ($self->_database->_repo->run(@cmd)) {
+			if (m!/!) {
+				next if $docs->{$`};
+				$cursor->_add_result({ document_dir => File::Spec->catdir($self->path, $`) });
+				$docs->{$`} = 1;
+			} else {
+				next if $docs->{$_};
+				$cursor->_add_result({ document_file => File::Spec->catfile($self->path, $_) });
+				$docs->{$_} = 1;
 			}
 		}
 	}
@@ -435,6 +332,122 @@ sub _load_document_dir {
 	$doc->{_path} = $path if $doc && scalar keys %$doc;
 
 	return $doc;
+}
+
+
+
+=head2 _match_by_name( $name, \%options )
+
+=cut
+
+sub _match_by_name {
+	my ($self, $name, $opts) = @_;
+
+	my @files = $opts->{working} ? $self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath)) : $self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:');
+	my $cursor = Giddy::Cursor->new(_query => { name => $name, coll => $self, opts => $opts });
+
+	# what kind of match are we performing? do we search for things
+	# that start with $path, or do we search for $path anywhere?
+	my $re = $name && $opts->{prefix} ? qr/^$name/ : $name ? qr/$name/ : qr//;
+
+	foreach (@files) {
+		if (m/$re/) {
+			my $full_path = File::Spec->catfile($self->path, $_);
+			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
+
+			if ($opts->{working}) {
+				# what is the type of this thing?
+				if (-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path) && -e File::Spec->catfile($self->_database->_repo->work_tree, $search_path, 'attributes.yaml')) {
+					# this is a document directory
+					$cursor->_add_result({ document_dir => $full_path });
+				} elsif (!-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path)) {
+					# this is a document file
+					$cursor->_add_result({ document_file => $full_path });
+				}
+			} else {
+				# what is the type of this thing?
+				my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
+				if ($t eq 'tree') {
+					# this is either a collection or a document
+					if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
+						# great, this is a document directory, let's add it
+						$cursor->_add_result({ document_dir => $full_path });
+					}
+				} elsif ($t eq 'blob') {
+					# cool, this is a document file
+					$cursor->_add_result({ document_file => $full_path });
+				}
+			}
+		}
+	}
+
+	return $cursor;
+}
+
+=head2 _match_by_query( [ \%query, \%options ] )
+
+=cut
+
+sub _match_by_query {
+	my ($self, $query, $opts) = @_;
+
+	$query ||= {};
+	$opts ||= {};
+
+	my $cursor = Giddy::Cursor->new(_query => { query => $query, coll => $self, opts => $opts });
+
+	if ($opts->{working}) {
+		foreach ($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath))) {
+			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->spath, $_);
+			my $full_path = File::Spec->catfile($self->path, $_);
+
+			# what is the type of this doc?
+			my $t;
+			if (-d $fs_path && -e File::Spec->catfile($fs_path, 'attributes.yaml')) {
+				# this is a document dir
+				my $doc = $self->_load_document_dir($full_path, 1);
+				if ($self->_document_matches($doc, $query)) {
+					$cursor->_add_result({ document_dir => $full_path });
+					$cursor->_add_loaded($doc);
+				}
+			} elsif (!-d $fs_path) {
+				# this is a document file
+				my $doc = $self->_load_document_file($full_path, 1);
+				if ($self->_document_matches($doc, $query)) {
+					$cursor->_add_result({ document_dir => $full_path });
+					$cursor->_add_loaded($doc);
+				}
+			}
+		}
+	} else {
+		foreach ($self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:')) {
+			my $full_path = File::Spec->catfile($self->path, $_);
+			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
+
+			# what is the type of this thing?
+			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
+			if ($t eq 'tree') {
+				# this is either a collection or a document
+				if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
+					# great, this is a document directory, let's add it
+					my $doc = $self->_load_document_dir($full_path);
+					if ($self->_document_matches($doc, $query)) {
+						$cursor->_add_result({ document_dir => $full_path });
+						$cursor->_add_loaded($doc);
+					}
+				}
+			} elsif ($t eq 'blob') {
+				# cool, this is a document file
+				my $doc = $self->_load_document_file($full_path);
+				if ($self->_document_matches($doc, $query)) {
+					$cursor->_add_result({ document_file => $full_path });
+					$cursor->_add_loaded($doc);
+				}
+			}
+		}
+	}
+
+	return $cursor;
 }
 
 =head1 AUTHOR

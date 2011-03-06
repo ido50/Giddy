@@ -124,20 +124,16 @@ sub mark {
 	$self->_set_marked($marked);
 }
 
-=head2 get( [ $path, [\%options] ] )
+=head2 find( [ $path, [\%options] ] )
 
-Searches the Giddy repository for I<anything> that matches the provided
+Searches the Giddy repository for documents that match the provided
 path. The path has to be relative to the repository's root directory, which
-is considered the empty string. The empty string will be used if a path
-is not provided.
+is considered '/'. This string will be used if C<$path> is not provided.
 
 =cut
 
-sub get {
+sub find {
 	my ($self, $path, $opts) = @_;
-
-	croak "You must provide a path (not the root path) to find in the Giddy database."
-		unless $path && $path ne '/';
 
 	croak "find() expected a hash-ref of options, but received ".ref($opts)
 		if $opts && ref $opts ne 'HASH';
@@ -145,19 +141,24 @@ sub get {
 	$opts ||= {};
 
 	# in which directory are we searching?
-	my ($file) = ($path =~ m!/([^/]+)$!);
-	$file = $path unless $file;
-	my $dir = $` || '/';
+	my ($dir, $name) = ('/', '');
+	if ($path) {
+		($name) = ($path =~ m!/([^/]+)$!);
+		$name ||= $path;
+		$dir = $` || '/';
+	}
 
-	return $self->get_collection($dir)->get($file, $opts);
+	return $self->get_collection($dir)->find($name, $opts);
 }
 
-=head2 get_one( $path, [\%options] )
+=head2 find_one( [ $path, \%options ] )
+
+Same as calling C<< find($path, $options)->first() >>.
 
 =cut
 
-sub get_one {
-	shift->get(@_)->first;
+sub find_one {
+	shift->find(@_)->first;
 }
 
 =head1 AUTHOR

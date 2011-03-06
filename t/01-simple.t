@@ -10,7 +10,7 @@ use Test::Git;
 
 has_git();
 
-plan tests => 42;
+plan tests => 51;
 
 my $tmpdir = tempdir(CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -42,14 +42,14 @@ is($text_p, '/collection/asdf.txt', 'Create a text article');
 $db->commit( "Testing a commit" );
 
 # take a look at the contents of the articles
-my $html = $db->get_one($html_p);
+my $html = $db->find_one($html_p);
 is($html->{_body}, '<h1>Giddy</h1>', 'HTML cached content OK');
 is($html->{user}, 'gitguy', 'HTML attributes OK');
 
-my $json = $db->get_one($json_p, { working => 1 });
+my $json = $db->find_one($json_p, { working => 1 });
 is($json->{_body}, '{ how: "so" }', 'JSON working content OK');
 
-my $text = $db->get_one($text_p);
+my $text = $db->find_one($text_p);
 is($text->{_path}, $text_p, 'Text article loaded OK');
 
 # get the root collection
@@ -63,7 +63,7 @@ ok(-d File::Spec->catdir($tmpdir, 'about'), 'Document has a directory in the fil
 ok(-e File::Spec->catdir($tmpdir, 'about', 'attributes.yaml'), 'Document has an attributes.yaml file');
 
 # search for the document before commiting
-my $c1 = $db->get($doc_p);
+my $c1 = $db->find($doc_p);
 is($c1->count, 0, 'Document cannot be found before commiting');
 
 # add a fake binary file to the document
@@ -75,14 +75,19 @@ close FILE;
 $db->commit( "Testing another commit" );
 
 # now find the document
-my $doc = $root->get_one('about');
+my $doc = $root->find_one('about');
 ok($doc, 'Document now found');
 is($doc->{'subject'}, 'About Giddy', 'Document loaded OK');
 is($doc->{'binary'}, '/about/binary', 'Document has binary reference OK');
 
 # search for some stuff
-my $c2 = $db->get('/collection/index.html');
+my $c2 = $db->find('/collection/index.html');
 is($c2->count, 1, 'Article found OK');
+
+# grep for some stuff
+my $g0 = $coll->grep_one('how');
+ok($g0, 'Found something when grepping for "how" in collection');
+is($g0->{_path}, '/collection/index.json', 'Found index.json when grepping for "how" in collection');
 
 # drop the collection
 $coll->drop;
@@ -155,5 +160,24 @@ is($f10[0]->{_path}, '/one', 'Got the correct result when searching by regex => 
 my $f11 = $root->find({ starring => { '$type' => 4 } });
 my @f11 = $f11->all;
 is($f11->count, 3, 'Got 3 results as expected when searching by starring => { $type => 4 }');
+
+# now let's try some grep searches
+my $g1 = $root->grep('Emma Stone');
+my @g1 = $g1->all;
+is($g1->count, 2, 'Got 2 results as expected when grepping by Emma Stone');
+ok(($g1[0]->{_path} eq '/four' && $g1[1]->{_path} eq '/five') || ($g1[1]->{_path} eq '/four' && $g1[0]->{_path} eq '/five'), 'Got the correct results when grepping by Emma Stone');
+
+my $g2 = $root->grep(['Michael Cera', 'Woody Harrelson'], { 'or' => 1 });
+my @g2 = $g2->all;
+is($g2->count, 2, 'Got 2 results as expected when grepping by Michael Cera or Woody Harrelson');
+ok(($g2[0]->{_path} eq '/four' && $g2[1]->{_path} eq '/five') || ($g2[1]->{_path} eq '/four' && $g2[0]->{_path} eq '/five'), 'Got the correct results when grepping by Michael Cera or Woody Harrelson');
+
+my $g3 = $root->grep(['Jesse Eisenberg', 'Woody Harrelson']);
+my @g3 = $g3->all;
+is($g3->count, 1, 'Got 1 result as expected when grepping by Michael Cera and Woody Harrelson');
+is($g3[0]->{_path}, '/four', 'Got the correct result when grepping by Michael Cera and Woody Harrelson');
+
+my $g4 = $root->grep;
+is($g4->count, 6, 'Got all documents in collection when grepping by nothing');
 
 done_testing();
