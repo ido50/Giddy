@@ -5,10 +5,10 @@ package Giddy;
 use Any::Moose;
 use namespace::autoclean;
 
+use Carp;
 use File::Spec;
 use File::Util;
 use Giddy::Database;
-use Carp;
 
 =head1 NAME
 

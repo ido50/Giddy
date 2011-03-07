@@ -5,9 +5,9 @@ package Giddy::Database;
 use Any::Moose;
 use namespace::autoclean;
 
+use Carp;
 use Git::Repository;
 use Giddy::Collection;
-use Carp;
 
 =head1 NAME
 
@@ -85,11 +85,6 @@ sub commit {
 
 	$msg ||= "Commiting ".scalar(@{$self->_marked})." changes";
 
-	# stage the files
-	foreach (@{$self->_marked}) {
-		$self->_repo->run('add', $_);
-	}
-
 	# commit
 	$self->_repo->run('commit', '-m', $msg);
 
@@ -117,8 +112,12 @@ sub mark {
 		s!/$!!;
 		# remove starting slash from path, if exists
 		s!^/!!;
+		
+		# stage the file
+		$self->_repo->run('add', $_);
 	}
 
+	# store files in object
 	my $marked = $self->_marked;
 	push(@$marked, @paths);
 	$self->_set_marked($marked);

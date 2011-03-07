@@ -46,7 +46,7 @@ my $html = $db->find_one($html_p);
 is($html->{_body}, '<h1>Giddy</h1>', 'HTML cached content OK');
 is($html->{user}, 'gitguy', 'HTML attributes OK');
 
-my $json = $db->find_one($json_p, { working => 1 });
+my $json = $db->find_one($json_p);
 is($json->{_body}, '{ how: "so" }', 'JSON working content OK');
 
 my $text = $db->find_one($text_p);
@@ -72,6 +72,7 @@ print FILE "ASDF";
 close FILE;
 
 # commit the changes
+$db->mark('about/binary');
 $db->commit( "Testing another commit" );
 
 # now find the document

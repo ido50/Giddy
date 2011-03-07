@@ -7,7 +7,6 @@ use DateTime::Format::W3CDTF;
 use Try::Tiny;
 use Carp;
 
-
 =head1 NAME
 
 Giddy::Role::QueryParser - Provides query parsing and document matching for Giddy::Collection
@@ -58,8 +57,6 @@ sub _document_matches {
 	# if we've reached here, the document matches, so return true
 	return 1;
 }
-
-=head1 INTERNAL METHODS
 
 =head2 _attributes_matches( \%doc, $key, $value )
 
@@ -149,7 +146,7 @@ sub _attribute_matches {
 						return if exists $doc->{$key};
 					}
 				} elsif ($q eq '$mod' && ref $term eq 'ARRAY' && scalar @$term == 2) {
-					return unless defined $doc->{$key} && $doc->{$key} =~ m/^\d+$/ && $doc->{$key} % $term->[0] == $term->[1];
+					return unless defined $doc->{$key} && $doc->{$key} =~ m/^\d+(\.\d+)?$/ && $doc->{$key} % $term->[0] == $term->[1];
 				} elsif ($q eq '$in' && ref $term eq 'ARRAY') {
 					return unless defined $doc->{$key} && $self->_value_in($doc->{$key}, $term);
 				} elsif ($q eq '$nin' && ref $term eq 'ARRAY') {
@@ -243,10 +240,10 @@ sub _value_in {
 	my ($self, $value, $array) = @_;
 
 	foreach (@$array) {
-		next if m/^\d+$/ && $value !~ m/^\d+$/;
-		next if !m/^\d+$/ && $value =~ m/^\d+$/;
-		return 1 if m/^\d+$/ && $value == $_;
-		return 1 if !m/^\d+$/ && $value eq $_;
+		next if m/^\d+(\.\d+)?$/ && $value !~ m/^\d+(\.\d+)?$/;
+		next if !m/^\d+(\.\d+)?$/ && $value =~ m/^\d+$(\.\d+)?/;
+		return 1 if m/^\d+(\.\d+)?$/ && $value == $_;
+		return 1 if !m/^\d+(\.\d+)?$/ && $value eq $_;
 	}
 
 	return;

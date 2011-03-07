@@ -5,14 +5,15 @@ package Giddy::Collection;
 use Any::Moose;
 use namespace::autoclean;
 
-use File::Spec;
-use Giddy::Cursor;
-use YAML::Any;
-use File::Util;
-use Try::Tiny;
 use Carp;
+use File::Spec;
+use File::Util;
+use Giddy::Cursor;
+use Tie::IxHash;
+use Try::Tiny;
+use YAML::Any;
 
-with 'Giddy::Role::QueryParser';
+with 'Giddy::Role::QueryParser', 'Giddy::Role::DocumentUpdater';
 
 =head1 NAME
 
@@ -51,65 +52,15 @@ has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
 
 =head1 OBJECT METHODS
 
-=head2 insert( $filename, \%attributes )
+=head2 DOCUMENT QUERYING
 
-=cut
-
-sub insert {
-	my ($self, $filename, $attrs) = @_;
-
-	croak "You must provide a filename for the new document (that doesn't start with a slash)."
-		unless $filename && $filename !~ m!^/!;
-
-	croak "You must provide the document's attributes as a hash-ref."
-		unless $attrs && ref $attrs eq 'HASH';
-
-	if (exists $attrs->{_body}) {
-		my $fpath = File::Spec->catfile($self->_database->_repo->work_tree, $self->spath, $filename);
-		croak "A document called $filename already exists."
-			if -e $fpath;
-
-		my $body = delete $attrs->{_body};
-
-		my $content = '';
-		$content .= Dump($attrs) . "\n" if scalar keys %$attrs;
-		$content .= $body if $body;
-		$content = ' ' unless $content;
-		$content =~ s/^---\n//;
-
-		# create the document
-		$self->_futil->write_file(file => $fpath, content => $content, bitmask => 0664);
-
-		# mark the document for staging
-		$self->_database->mark(File::Spec->catfile($self->path, $filename));
-	} else {
-		my $fpath = File::Spec->catdir($self->_database->_repo->work_tree, $self->spath, $filename);
-		croak "A document called $filename already exists."
-			if -e $fpath;
-
-		# create the document directory
-		$self->_futil->make_dir($fpath, 0775);
-
-		# create the attributes file
-		my $yaml = Dump($attrs);
-		$yaml =~ s/^---\n//;
-		$self->_futil->write_file('file' => File::Spec->catfile($fpath, 'attributes.yaml'), 'content' => $yaml, 'bitmask' => 0664);
-
-		# mark the document for staging
-		$self->_database->mark(File::Spec->catdir($self->path, $filename));
-	}
-
-	# return the document's path
-	return File::Spec->catdir($self->path, $filename);
-}
-
-=head2 find( [ $name, \%options ] )
+=head3 find( [ $name, \%options ] )
 
 Searches the Giddy repository for documents that match the provided
 file name. If C<$name> is empty or not provided, every document in the
 collection will be matched.
 
-=head2 find( [ \%query, \%options ] )
+=head3 find( [ \%query, \%options ] )
 
 Searches the Giddy repository for documents that match the provided query.
 If no query is given, every document in the collection will be matched.
@@ -137,11 +88,11 @@ sub find {
 	}
 }
 
-=head2 find_one( [ $name, \%options ] )
+=head3 find_one( [ $name, \%options ] )
 
 Same as calling C<< find($name, $options)->first() >>.
 
-=head2 find_one( [ \%query, \%options ] )
+=head3 find_one( [ \%query, \%options ] )
 
 Same as calling C<< find($query, $options)->first() >>.
 
@@ -151,14 +102,14 @@ sub find_one {
 	shift->find(@_)->first;
 }
 
-=head2 grep( [ \@strings, \%options ] )
+=head3 grep( [ \@strings, \%options ] )
 
 Finds documents whose file contents (ignoring attributes and database YAML
 structure) match all (or any, depending on C<\%options>) of the provided
 strings. This is much faster than using C<find()> as it simply uses the
 git-grep command, but is obviously less useful.
 
-=head2 grep( [ $string, \%options ] )
+=head3 grep( [ $string, \%options ] )
 
 Finds documents whose file contents (ignoring attributes and database YAML
 structure) match the provided string. This is much faster than using C<find()> as it simply uses the
@@ -192,7 +143,7 @@ sub grep {
 		push(@cmd, '-e', '');
 	}
 
-	push(@cmd, { cwd => File::Spec->catdir($self->_database->_repo->work_tree, $self->spath) }) if $self->spath;
+	push(@cmd, { cwd => File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath) }) if $self->_spath;
 
 	my $docs = {};
 	if ($opts->{working}) {
@@ -224,7 +175,7 @@ sub grep {
 	return $cursor;
 }
 
-=head2 grep_one( \@query, [ \%options ] )
+=head3 grep_one( \@query, [ \%options ] )
 
 =cut
 
@@ -232,17 +183,117 @@ sub grep_one {
 	shift->grep(@_)->first;
 }
 
-=head2 spath()
+=head3 count( $name, \%options )
 
-Returns the path of the collection, without the starting slash.
+Shortcut for C<< find($name, $options)->count() >>.
+
+=head3 count( \%query, \%options )
+
+Shortcut for C<< find($query, $options)->count() >>.
 
 =cut
 
-sub spath {
-	($_[0]->path =~ m!^/(.+)$!)[0];
+sub count {
+	shift->find(@_)->count;
 }
 
-=head2 drop()
+=head2 DOCUMENT MANIPULATION
+
+=head3 insert( $filename, \%attributes )
+
+=cut
+
+sub insert {
+	my ($self, $filename, $attrs) = @_;
+
+	croak "You must provide a filename for the new document (that doesn't start with a slash)."
+		unless $filename && $filename !~ m!^/!;
+
+	return ($self->batch_insert([$filename => $attrs]))[0];
+}
+
+=head3 batch_insert( [ $path1 => \%attrs1, $path2 => \%attrs2, ... ] )
+
+=cut
+
+sub batch_insert {
+	my ($self, $docs) = @_;
+
+	# first, make sure the document array is valid
+	croak "batch_insert() expects an array-ref of documents."
+		unless $docs && ref $docs eq 'ARRAY';
+	croak "Odd number of elements in document array, batch_insert() expects an even-numberd array."
+		unless scalar @$docs % 2 == 0;
+
+	my $hash = Tie::IxHash->new(@$docs);
+	foreach my $filename ($hash->Keys) {
+		my $attrs = $hash->FETCH($filename);
+
+		croak "You must provide document ${filename}'s attributes as a hash-ref."
+			unless $attrs && ref $attrs eq 'HASH';
+	}
+
+	my @paths; # will hold paths of all documents created
+	foreach my $filename ($hash->Keys) {
+		my $attrs = $hash->FETCH($filename);
+
+		if (exists $attrs->{_body}) {
+			my $fpath = File::Spec->catfile($self->_database->_repo->work_tree, $self->_spath, $filename);
+			croak "A document called $filename already exists."
+				if -e $fpath;
+
+			my $body = delete $attrs->{_body};
+
+			my $content = '';
+			$content .= Dump($attrs) . "\n" if scalar keys %$attrs;
+			$content .= $body if $body;
+			$content = ' ' unless $content;
+			$content =~ s/^---\n//;
+
+			# create the document
+			$self->_futil->write_file(file => $fpath, content => $content, bitmask => 0664);
+
+			# mark the document for staging
+			$self->_database->mark(File::Spec->catfile($self->path, $filename));
+		} else {
+			my $fpath = File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath, $filename);
+			croak "A document called $filename already exists."
+				if -e $fpath;
+
+			# create the document directory
+			$self->_futil->make_dir($fpath, 0775);
+
+			# create the attributes file
+			my $yaml = Dump($attrs);
+			$yaml =~ s/^---\n//;
+			$self->_futil->write_file('file' => File::Spec->catfile($fpath, 'attributes.yaml'), 'content' => $yaml, 'bitmask' => 0664);
+
+			# mark the document for staging
+			$self->_database->mark(File::Spec->catdir($self->path, $filename));
+		}
+
+		# return the document's path
+		push(@paths, File::Spec->catdir($self->path, $filename));
+	}
+
+	return @paths;
+}
+
+=head3 update( $name, \%object, \%options )
+
+=head3 update( \%query, \%object, \%options )
+
+=cut
+
+sub update {
+	my ($self, $query, $options) = @_;
+
+	my $cursor = $self->find($query, $options);
+}
+
+=head2 COLLECTION OPERATIONS
+
+=head3 drop()
 
 Removes the collection from the database. Will not work (and croak) on
 the root collection.
@@ -255,12 +306,22 @@ sub drop {
 	croak "You cannot drop the root collection."
 		if $self->path eq '/';
 
-	$self->_database->_repo->run('rm', '-r', '-f', $self->spath);
+	$self->_database->_repo->run('rm', '-r', '-f', $self->_spath);
 }
 
 =head1 INTERNAL METHODS
 
-=head2 _load_document_file( $path, [ $working ] )
+The following methods are only to be used internally.
+
+=head3 _spath()
+
+=cut
+
+sub _spath {
+	($_[0]->path =~ m!^/(.+)$!)[0];
+}
+
+=head3 _load_document_file( $path, [ $working ] )
 
 =cut
 
@@ -293,7 +354,7 @@ sub _load_document_file {
 	};
 }
 
-=head2 _load_document_dir( $path, [ $working ] )
+=head3 _load_document_dir( $path, [ $working ] )
 
 =cut
 
@@ -334,16 +395,14 @@ sub _load_document_dir {
 	return $doc;
 }
 
-
-
-=head2 _match_by_name( $name, \%options )
+=head3 _match_by_name( $name, \%options )
 
 =cut
 
 sub _match_by_name {
 	my ($self, $name, $opts) = @_;
 
-	my @files = $opts->{working} ? $self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath)) : $self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:');
+	my @files = $opts->{working} ? $self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath)) : $self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:');
 	my $cursor = Giddy::Cursor->new(_query => { name => $name, coll => $self, opts => $opts });
 
 	# what kind of match are we performing? do we search for things
@@ -384,7 +443,7 @@ sub _match_by_name {
 	return $cursor;
 }
 
-=head2 _match_by_query( [ \%query, \%options ] )
+=head3 _match_by_query( [ \%query, \%options ] )
 
 =cut
 
@@ -397,8 +456,8 @@ sub _match_by_query {
 	my $cursor = Giddy::Cursor->new(_query => { query => $query, coll => $self, opts => $opts });
 
 	if ($opts->{working}) {
-		foreach ($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->spath))) {
-			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->spath, $_);
+		foreach ($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath))) {
+			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->_spath, $_);
 			my $full_path = File::Spec->catfile($self->path, $_);
 
 			# what is the type of this doc?
@@ -420,7 +479,7 @@ sub _match_by_query {
 			}
 		}
 	} else {
-		foreach ($self->_database->_repo->run('ls-tree', '--name-only', $self->spath ? 'HEAD:'.$self->spath : 'HEAD:')) {
+		foreach ($self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:')) {
 			my $full_path = File::Spec->catfile($self->path, $_);
 			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
 
