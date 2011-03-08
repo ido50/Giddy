@@ -54,12 +54,12 @@ sub _load_document_file {
 	};
 }
 
-=head3 _load_document_dir( $path, [ $working ] )
+=head3 _load_document_dir( $path, [ $working, $skip_binary ] )
 
 =cut
 
 sub _load_document_dir {
-	my ($self, $path, $working) = @_;
+	my ($self, $path, $working, $skip_bin) = @_;
 
 	my $spath = $path;
 	$spath =~ s!^/!!;
@@ -74,9 +74,11 @@ sub _load_document_dir {
 		croak "Can't find/read attributes.yaml file of document $path." unless $yaml;
 		$doc = try { Load($yaml) } catch { {} };
 
-		# try to load binary files
-		foreach (grep {!/^attributes\.yaml$/} $self->_futil->list_dir($fpath, '--files-only')) {
-			$doc->{$_} = File::Spec->catfile($path, $_);
+		# try to load binary files (unless we're skipping binary)
+		unless ($skip_bin) {
+			foreach (grep {!/^attributes\.yaml$/} $self->_futil->list_dir($fpath, '--files-only')) {
+				$doc->{$_} = File::Spec->catfile($path, $_);
+			}
 		}
 	} else {
 		# try to load the attributes
@@ -84,9 +86,11 @@ sub _load_document_dir {
 		croak "Can't find/read attributes.yaml file of document $path." unless $yaml;
 		$doc = try { Load($yaml) } catch { {} };
 
-		# try to load binary files
-		foreach (grep {!/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$spath)) {
-			$doc->{$_} = File::Spec->catfile($path, $_);
+		# try to load binary files (unless we're skipping binary)
+		unless ($skip_bin) {
+			foreach (grep {!/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$spath)) {
+				$doc->{$_} = File::Spec->catfile($path, $_);
+			}
 		}
 	}
 

@@ -273,6 +273,7 @@ sub update {
 		if $options && ref $options ne 'HASH';
 
 	$options ||= {};
+	$options->{skip_binary} = 1;
 
 	my $cursor = $self->find($query, $options);
 

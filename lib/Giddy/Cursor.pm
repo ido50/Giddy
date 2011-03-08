@@ -193,7 +193,7 @@ sub _load_result {
 		if (exists $self->_loaded->{$result->{document_dir}}) {
 			return $self->_loaded->{$result->{document_dir}};
 		} else {
-			my $doc = $self->_query->{coll}->_load_document_dir($result->{document_dir}, $self->_query->{opts}->{working});
+			my $doc = $self->_query->{coll}->_load_document_dir($result->{document_dir}, $self->_query->{opts}->{working}, $self->_query->{opts}->{skip_binary});
 			$self->_add_loaded($result->{document_dir}, $doc);
 			return $doc;
 		}

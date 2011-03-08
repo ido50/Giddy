@@ -161,8 +161,8 @@ sub _index_of {
 	for (my $i = 0; $i < scalar @$array; $i++) {
 		next if $array->[$i] =~ m/^\d+(\.\d+)?$/ && $value !~ m/^\d+(\.\d+)?$/;
 		next if $array->[$i] !~ m/^\d+(\.\d+)?$/ && $value =~ m/^\d+$(\.\d+)?/;
-		return $i if $array->[$i] =~ m/^\d+(\.\d+)?$/ && $value == $_;
-		return $i if $array->[$i] !~ m/^\d+(\.\d+)?$/ && $value eq $_;
+		return $i if $array->[$i] =~ m/^\d+(\.\d+)?$/ && $value == $array->[$i];
+		return $i if $array->[$i] !~ m/^\d+(\.\d+)?$/ && $value eq $array->[$i];
 	}
 
 	return;
