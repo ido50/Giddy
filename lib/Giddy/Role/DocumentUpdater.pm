@@ -2,10 +2,12 @@ package Giddy::Role::DocumentUpdater;
 
 use Any::Moose 'Role';
 use namespace::autoclean;
-use Data::Compare;
-use DateTime::Format::W3CDTF;
-use Try::Tiny;
 use Carp;
+
+requires 'path';
+requires '_futil';
+requires '_database';
+requires '_spath';
 
 =head1 NAME
 
@@ -24,17 +26,15 @@ sub _update_document {
 
 	croak "You must provide an updates hash-ref to update according to."
 		unless $obj && ref $obj eq 'HASH';
-
-	# $doc can be empty, but must be a hash-ref
-	$doc ||= {};
-	croak "Document to update must be a hash-ref."
-		unless ref $doc eq 'HASH';
+	croak "You must provide a document hash-ref to update (can be empty)."
+		unless defined $doc && ref $doc eq 'HASH';
 
 	# we only need to do something if the $obj hash-ref has any advanced
 	# update operations, otherwise $obj is meant to be the new $doc
 
 	if ($self->_has_adv_upd($obj)) {
 		foreach my $op (keys %$obj) {
+			next if $_ eq '_name';
 			if ($op eq '$inc') {
 				# increase numerically
 				next unless ref $obj->{$op} eq 'HASH';
@@ -58,7 +58,7 @@ sub _update_document {
 				# push values to end of arrays
 				next unless ref $obj->{$op} eq 'HASH';
 				foreach my $field (keys %{$obj->{$op}}) {
-					croak "The $field attribute is not an array in $doc->{_path}."
+					croak "The $field attribute is not an array in $doc->{_name}."
 						if defined $doc->{$field} && ref $doc->{$field} ne 'ARRAY';
 					$doc->{$field} ||= [];
 					push(@{$doc->{$field}}, $obj->{$op}->{$field});
@@ -67,7 +67,7 @@ sub _update_document {
 				# push a list of values to end of arrays
 				next unless ref $obj->{$op} eq 'HASH';
 				foreach my $field (keys %{$obj->{$op}}) {
-					croak "The $field attribute is not an array in $doc->{_path}."
+					croak "The $field attribute is not an array in $doc->{_name}."
 						if defined $doc->{$field} && ref $doc->{$field} ne 'ARRAY';
 					$doc->{$field} ||= [];
 					push(@{$doc->{$field}}, @{$obj->{$op}->{$field}});
@@ -76,7 +76,7 @@ sub _update_document {
 				# push values to arrays only if they're not already there
 				next unless ref $obj->{$op} eq 'HASH';
 				foreach my $field (keys %{$obj->{$op}}) {
-					croak "The $field attribute is not an array in $doc->{_path}."
+					croak "The $field attribute is not an array in $doc->{_name}."
 						if defined $doc->{$field} && ref $doc->{$field} ne 'ARRAY';
 					$doc->{$field} ||= [];
 					push(@{$doc->{$field}}, $obj->{$op}->{$field})
@@ -86,7 +86,7 @@ sub _update_document {
 				# pop values from arrays
 				next unless ref $obj->{$op} eq 'HASH';
 				foreach my $field (keys %{$obj->{$op}}) {
-					croak "The $field attribute is not an array in $doc->{_path}."
+					croak "The $field attribute is not an array in $doc->{_name}."
 						if defined $doc->{$field} && ref $doc->{$field} ne 'ARRAY';
 					$doc->{$field} ||= [];
 					splice(@{$doc->{$field}}, $obj->{$op}->{$field}, 1);
@@ -102,7 +102,7 @@ sub _update_document {
 				# remove values from arrays
 				next unless ref $obj->{$op} eq 'HASH';
 				foreach my $field (keys %{$obj->{$op}}) {
-					croak "The $field attribute is not an array in $doc->{_path}."
+					croak "The $field attribute is not an array in $doc->{_name}."
 						if defined $doc->{$field} && ref $doc->{$field} ne 'ARRAY';
 					$doc->{$field} ||= [];
 					my $i = $self->_index_of($obj->{$op}->{$field}, $doc->{$field});
@@ -115,7 +115,7 @@ sub _update_document {
 				# remove a list of values from arrays
 				next unless ref $obj->{$op} eq 'HASH';
 				foreach my $field (keys %{$obj->{$op}}) {
-					croak "The $field attribute is not an array in $doc->{_path}."
+					croak "The $field attribute is not an array in $doc->{_name}."
 						if defined $doc->{$field} && ref $doc->{$field} ne 'ARRAY';
 					$doc->{$field} ||= [];
 					foreach my $value (@{$obj->{$op}->{$field}}) {
@@ -130,10 +130,11 @@ sub _update_document {
 		}
 	} else {
 		# $obj is actually the new $doc
-		return $obj;
+		foreach (keys %$obj) {
+			next if $_ eq '_name';
+			$doc->{$_} = $obj->{$_};
+		}
 	}
-
-	return $doc;
 }
 
 =head2 _has_adv_upd( \%hash )
@@ -166,5 +167,55 @@ sub _index_of {
 
 	return;
 }
+
+=head1 AUTHOR
+
+Ido Perlmuter, C<< <ido at ido50.net> >>
+
+=head1 BUGS
+
+Please report any bugs or feature requests to C<bug-giddy at rt.cpan.org>, or through
+the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Giddy>. I will be notified, and then you'll
+automatically be notified of progress on your bug as I make changes.
+
+=head1 SUPPORT
+
+You can find documentation for this module with the perldoc command.
+
+	perldoc Giddy::Role::DocumentUpdater
+
+You can also look for information at:
+
+=over 4
+
+=item * RT: CPAN's request tracker
+
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Giddy>
+
+=item * AnnoCPAN: Annotated CPAN documentation
+
+L<http://annocpan.org/dist/Giddy>
+
+=item * CPAN Ratings
+
+L<http://cpanratings.perl.org/d/Giddy>
+
+=item * Search CPAN
+
+L<http://search.cpan.org/dist/Giddy/>
+
+=back
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2011 Ido Perlmuter.
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of either: the GNU General Public License as published
+by the Free Software Foundation; or the Artistic License.
+
+See http://dev.perl.org/licenses/ for more information.
+
+=cut
 
 1;

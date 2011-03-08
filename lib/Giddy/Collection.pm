@@ -10,10 +10,17 @@ use File::Spec;
 use File::Util;
 use Giddy::Cursor;
 use Tie::IxHash;
-use Try::Tiny;
-use YAML::Any;
 
-with 'Giddy::Role::QueryParser', 'Giddy::Role::DocumentUpdater';
+has 'path' => (is => 'ro', isa => 'Str', default => '/');
+
+has '_database' => (is => 'ro', isa => 'Giddy::Database', required => 1);
+
+has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
+
+with	'Giddy::Role::DocumentLoader',
+	'Giddy::Role::DocumentMatcher',
+	'Giddy::Role::DocumentStorer',
+	'Giddy::Role::DocumentUpdater';
 
 =head1 NAME
 
@@ -42,14 +49,6 @@ A L<File::Util> object used by the module. Required.
 
 A L<MIME::Types> object used by the module. Automatically created.
 
-=cut
-
-has 'path' => (is => 'ro', isa => 'Str', default => '/');
-
-has '_database' => (is => 'ro', isa => 'Giddy::Database', required => 1);
-
-has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
-
 =head1 OBJECT METHODS
 
 =head2 DOCUMENT QUERYING
@@ -75,7 +74,7 @@ forced to load and deserialize every document.
 sub find {
 	my ($self, $query, $opts) = @_;
 
-	croak "find() expected a hash-ref for options, but received ".ref($opts)
+	croak "find() expected a hash-ref of options."
 		if $opts && ref $opts ne 'HASH';
 
 	$query ||= '';
@@ -122,7 +121,7 @@ Both methods return a L<Giddy::Cursor> object.
 sub grep {
 	my ($self, $query, $opts) = @_;
 
-	croak "grep() expected a hash-ref for options, but received ".ref($opts)
+	croak "grep() expected a hash-ref of options."
 		if $opts && ref $opts ne 'HASH';
 
 	$query ||= [];
@@ -226,51 +225,29 @@ sub batch_insert {
 		unless scalar @$docs % 2 == 0;
 
 	my $hash = Tie::IxHash->new(@$docs);
+
+	# make sure array is valid and we can actually create all the documents (i.e. they
+	# don't already exist) - if even one document is invalid, we don't create any
 	foreach my $filename ($hash->Keys) {
 		my $attrs = $hash->FETCH($filename);
 
 		croak "You must provide document ${filename}'s attributes as a hash-ref."
 			unless $attrs && ref $attrs eq 'HASH';
+
+		if (exists $attrs->{_body}) {
+			croak "A document called $filename already exists."
+				if -e File::Spec->catfile($self->_database->_repo->work_tree, $self->_spath, $filename);
+		} else {
+			croak "A document called $filename already exists."
+				if -e File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath, $filename);
+		}
 	}
 
 	my @paths; # will hold paths of all documents created
+
+	# store the documents in the filesystem
 	foreach my $filename ($hash->Keys) {
-		my $attrs = $hash->FETCH($filename);
-
-		if (exists $attrs->{_body}) {
-			my $fpath = File::Spec->catfile($self->_database->_repo->work_tree, $self->_spath, $filename);
-			croak "A document called $filename already exists."
-				if -e $fpath;
-
-			my $body = delete $attrs->{_body};
-
-			my $content = '';
-			$content .= Dump($attrs) . "\n" if scalar keys %$attrs;
-			$content .= $body if $body;
-			$content = ' ' unless $content;
-			$content =~ s/^---\n//;
-
-			# create the document
-			$self->_futil->write_file(file => $fpath, content => $content, bitmask => 0664);
-
-			# mark the document for staging
-			$self->_database->mark(File::Spec->catfile($self->path, $filename));
-		} else {
-			my $fpath = File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath, $filename);
-			croak "A document called $filename already exists."
-				if -e $fpath;
-
-			# create the document directory
-			$self->_futil->make_dir($fpath, 0775);
-
-			# create the attributes file
-			my $yaml = Dump($attrs);
-			$yaml =~ s/^---\n//;
-			$self->_futil->write_file('file' => File::Spec->catfile($fpath, 'attributes.yaml'), 'content' => $yaml, 'bitmask' => 0664);
-
-			# mark the document for staging
-			$self->_database->mark(File::Spec->catdir($self->path, $filename));
-		}
+		$self->_store_document($filename, $hash->FETCH($filename));
 
 		# return the document's path
 		push(@paths, File::Spec->catdir($self->path, $filename));
@@ -286,9 +263,52 @@ sub batch_insert {
 =cut
 
 sub update {
-	my ($self, $query, $options) = @_;
+	my ($self, $query, $obj, $options) = @_;
+
+	croak "update() requires a query string (can be empty) or hash-ref (can also be empty)."
+		unless defined $query;
+	croak "update() requires a hash-ref object to update according to."
+		unless $obj && ref $obj eq 'HASH';
+	croak "update() expects a hash-ref of options."
+		if $options && ref $options ne 'HASH';
+
+	$options ||= {};
 
 	my $cursor = $self->find($query, $options);
+
+	my $updated = { docs => [], n => 0 }; # will be returned to the caller
+
+	# have we found anything? if not, are we upserting?
+	if ($cursor->count) {
+		my @docs = $options->{multiple} ? $cursor->all : ($cursor->first); # the documents we're updating
+
+		foreach (@docs) {
+			my $name = $_->{_name};
+
+			# update the document object
+			$self->_update_document($obj, $_);
+
+			# store the document in the file system
+			$self->_store_document($name, $_);
+
+			# add info about this update to the $updated hash
+			$updated->{n} += 1;
+			push(@{$updated->{docs}}, $name);
+		}
+	} elsif ($options->{upsert} && ref $query eq 'HASH' && $query->{_name} && !ref $query->{_name}) {
+		# we can create one document
+		my $doc = {};
+		$self->_update_document($obj, $doc);
+
+		# store the document in the fs
+		$self->_store_document($query->{_name}, $doc);
+
+		# add info about this upsert to the $updated hash
+		$updated->{n} = 1;
+		$updated->{docs} = [$query->{_name}];
+	}
+
+	return $updated;
 }
 
 =head2 COLLECTION OPERATIONS
@@ -319,194 +339,6 @@ The following methods are only to be used internally.
 
 sub _spath {
 	($_[0]->path =~ m!^/(.+)$!)[0];
-}
-
-=head3 _load_document_file( $path, [ $working ] )
-
-=cut
-
-sub _load_document_file {
-	my ($self, $path, $working) = @_;
-
-	my $spath = $path;
-	$spath =~ s!^/!!;
-
-	my $content = $working ?
-		''.$self->_futil->load_file(File::Spec->catfile($self->_database->_repo->work_tree, $path)) :
-		''.$self->_database->_repo->run('show', 'HEAD:'.$spath);
-
-	return unless $content;
-
-	my ($yaml, $body) = ('', '');
-	if ($content =~ m/\n\n/) {
-		($yaml, $body) = ($`, $');
-	} else {
-		$body = $content;
-	}
-
-	return try {
-		my $doc = Load($yaml);
-		$doc->{_body} = $body;
-		$doc->{_path} = $path;
-		return $doc;
-	} catch {
-		return { _body => $body, _path => $path };
-	};
-}
-
-=head3 _load_document_dir( $path, [ $working ] )
-
-=cut
-
-sub _load_document_dir {
-	my ($self, $path, $working) = @_;
-
-	my $spath = $path;
-	$spath =~ s!^/!!;
-
-	my $doc;
-
-	my $fpath = File::Spec->catdir($self->_database->_repo->work_tree, $spath);
-
-	if ($working) {
-		# try to load the attributes
-		my $yaml = $self->_futil->load_file(File::Spec->catfile($fpath, 'attributes.yaml'));
-		croak "Can't find/read attributes.yaml file of document $path." unless $yaml;
-		$doc = try { Load($yaml) } catch { {} };
-
-		# try to load binary files
-		foreach (grep {!/^attributes\.yaml$/} $self->_futil->list_dir($fpath, '--files-only')) {
-			$doc->{$_} = File::Spec->catfile($path, $_);
-		}
-	} else {
-		# try to load the attributes
-		my $yaml = $self->_database->_repo->run('show', 'HEAD:'.File::Spec->catfile($spath, 'attributes.yaml'));
-		croak "Can't find/read attributes.yaml file of document $path." unless $yaml;
-		$doc = try { Load($yaml) } catch { {} };
-
-		# try to load binary files
-		foreach (grep {!/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$spath)) {
-			$doc->{$_} = File::Spec->catfile($path, $_);
-		}
-	}
-
-	$doc->{_path} = $path if $doc && scalar keys %$doc;
-
-	return $doc;
-}
-
-=head3 _match_by_name( $name, \%options )
-
-=cut
-
-sub _match_by_name {
-	my ($self, $name, $opts) = @_;
-
-	my @files = $opts->{working} ? $self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath)) : $self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:');
-	my $cursor = Giddy::Cursor->new(_query => { name => $name, coll => $self, opts => $opts });
-
-	# what kind of match are we performing? do we search for things
-	# that start with $path, or do we search for $path anywhere?
-	my $re = $name && $opts->{prefix} ? qr/^$name/ : $name ? qr/$name/ : qr//;
-
-	foreach (@files) {
-		if (m/$re/) {
-			my $full_path = File::Spec->catfile($self->path, $_);
-			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
-
-			if ($opts->{working}) {
-				# what is the type of this thing?
-				if (-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path) && -e File::Spec->catfile($self->_database->_repo->work_tree, $search_path, 'attributes.yaml')) {
-					# this is a document directory
-					$cursor->_add_result({ document_dir => $full_path });
-				} elsif (!-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path)) {
-					# this is a document file
-					$cursor->_add_result({ document_file => $full_path });
-				}
-			} else {
-				# what is the type of this thing?
-				my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
-				if ($t eq 'tree') {
-					# this is either a collection or a document
-					if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
-						# great, this is a document directory, let's add it
-						$cursor->_add_result({ document_dir => $full_path });
-					}
-				} elsif ($t eq 'blob') {
-					# cool, this is a document file
-					$cursor->_add_result({ document_file => $full_path });
-				}
-			}
-		}
-	}
-
-	return $cursor;
-}
-
-=head3 _match_by_query( [ \%query, \%options ] )
-
-=cut
-
-sub _match_by_query {
-	my ($self, $query, $opts) = @_;
-
-	$query ||= {};
-	$opts ||= {};
-
-	my $cursor = Giddy::Cursor->new(_query => { query => $query, coll => $self, opts => $opts });
-
-	if ($opts->{working}) {
-		foreach ($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath))) {
-			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->_spath, $_);
-			my $full_path = File::Spec->catfile($self->path, $_);
-
-			# what is the type of this doc?
-			my $t;
-			if (-d $fs_path && -e File::Spec->catfile($fs_path, 'attributes.yaml')) {
-				# this is a document dir
-				my $doc = $self->_load_document_dir($full_path, 1);
-				if ($self->_document_matches($doc, $query)) {
-					$cursor->_add_result({ document_dir => $full_path });
-					$cursor->_add_loaded($doc);
-				}
-			} elsif (!-d $fs_path) {
-				# this is a document file
-				my $doc = $self->_load_document_file($full_path, 1);
-				if ($self->_document_matches($doc, $query)) {
-					$cursor->_add_result({ document_dir => $full_path });
-					$cursor->_add_loaded($doc);
-				}
-			}
-		}
-	} else {
-		foreach ($self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:')) {
-			my $full_path = File::Spec->catfile($self->path, $_);
-			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
-
-			# what is the type of this thing?
-			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
-			if ($t eq 'tree') {
-				# this is either a collection or a document
-				if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
-					# great, this is a document directory, let's add it
-					my $doc = $self->_load_document_dir($full_path);
-					if ($self->_document_matches($doc, $query)) {
-						$cursor->_add_result({ document_dir => $full_path });
-						$cursor->_add_loaded($doc);
-					}
-				}
-			} elsif ($t eq 'blob') {
-				# cool, this is a document file
-				my $doc = $self->_load_document_file($full_path);
-				if ($self->_document_matches($doc, $query)) {
-					$cursor->_add_result({ document_file => $full_path });
-					$cursor->_add_loaded($doc);
-				}
-			}
-		}
-	}
-
-	return $cursor;
 }
 
 =head1 AUTHOR

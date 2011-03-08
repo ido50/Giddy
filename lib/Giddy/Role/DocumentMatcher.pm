@@ -1,4 +1,4 @@
-package Giddy::Role::QueryParser;
+package Giddy::Role::DocumentMatcher;
 
 use Any::Moose 'Role';
 use namespace::autoclean;
@@ -7,15 +7,134 @@ use DateTime::Format::W3CDTF;
 use Try::Tiny;
 use Carp;
 
+requires 'path';
+requires '_futil';
+requires '_database';
+requires '_spath';
+
 =head1 NAME
 
-Giddy::Role::QueryParser - Provides query parsing and document matching for Giddy::Collection
+Giddy::Role::DocumentMatcher - Provides query parsing and document matching for Giddy::Collection
 
 =head1 SYNOPSIS
 
 =head1 DESCRIPTION
 
 =head1 METHODS
+
+=head2 _match_by_name( $name, \%options )
+
+=cut
+
+sub _match_by_name {
+	my ($self, $name, $opts) = @_;
+
+	my @files = $opts->{working} ? $self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath)) : $self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:');
+	my $cursor = Giddy::Cursor->new(_query => { name => $name, coll => $self, opts => $opts });
+
+	# what kind of match are we performing? do we search for things
+	# that start with $path, or do we search for $path anywhere?
+	my $re = $name && $opts->{prefix} ? qr/^$name/ : $name ? qr/$name/ : qr//;
+
+	foreach (@files) {
+		if (m/$re/) {
+			my $full_path = File::Spec->catfile($self->path, $_);
+			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
+
+			if ($opts->{working}) {
+				# what is the type of this thing?
+				if (-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path) && -e File::Spec->catfile($self->_database->_repo->work_tree, $search_path, 'attributes.yaml')) {
+					# this is a document directory
+					$cursor->_add_result({ document_dir => $full_path });
+				} elsif (!-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path)) {
+					# this is a document file
+					$cursor->_add_result({ document_file => $full_path });
+				}
+			} else {
+				# what is the type of this thing?
+				my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
+				if ($t eq 'tree') {
+					# this is either a collection or a document
+					if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
+						# great, this is a document directory, let's add it
+						$cursor->_add_result({ document_dir => $full_path });
+					}
+				} elsif ($t eq 'blob') {
+					# cool, this is a document file
+					$cursor->_add_result({ document_file => $full_path });
+				}
+			}
+		}
+	}
+
+	return $cursor;
+}
+
+=head2 _match_by_query( [ \%query, \%options ] )
+
+=cut
+
+sub _match_by_query {
+	my ($self, $query, $opts) = @_;
+
+	$query ||= {};
+	$opts ||= {};
+
+	my $cursor = Giddy::Cursor->new(_query => { query => $query, coll => $self, opts => $opts });
+
+	if ($opts->{working}) {
+		foreach ($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath))) {
+			my $fs_path = File::Spec->catfile($self->_database->_repo->work_tree, $self->_spath, $_);
+			my $full_path = File::Spec->catfile($self->path, $_);
+
+			# what is the type of this doc?
+			my $t;
+			if (-d $fs_path && -e File::Spec->catfile($fs_path, 'attributes.yaml')) {
+				# this is a document dir
+				my $doc = $self->_load_document_dir($full_path, 1);
+				if ($self->_document_matches($doc, $query)) {
+					$cursor->_add_result({ document_dir => $full_path });
+					$cursor->_add_loaded($doc);
+				}
+			} elsif (!-d $fs_path) {
+				# this is a document file
+				my $doc = $self->_load_document_file($full_path, 1);
+				if ($self->_document_matches($doc, $query)) {
+					$cursor->_add_result({ document_dir => $full_path });
+					$cursor->_add_loaded($doc);
+				}
+			}
+		}
+	} else {
+		foreach ($self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:')) {
+			my $full_path = File::Spec->catfile($self->path, $_);
+			my $search_path = ($full_path =~ m!^/(.+)$!)[0];
+
+			# what is the type of this thing?
+			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
+			if ($t eq 'tree') {
+				# this is either a collection or a document
+				if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
+					# great, this is a document directory, let's add it
+					my $doc = $self->_load_document_dir($full_path);
+					if ($self->_document_matches($doc, $query)) {
+						$cursor->_add_result({ document_dir => $full_path });
+						$cursor->_add_loaded($doc);
+					}
+				}
+			} elsif ($t eq 'blob') {
+				# cool, this is a document file
+				my $doc = $self->_load_document_file($full_path);
+				if ($self->_document_matches($doc, $query)) {
+					$cursor->_add_result({ document_file => $full_path });
+					$cursor->_add_loaded($doc);
+				}
+			}
+		}
+	}
+
+	return $cursor;
+}
 
 =head2 _document_matches( \%doc, \%query )
 
@@ -263,7 +382,7 @@ automatically be notified of progress on your bug as I make changes.
 
 You can find documentation for this module with the perldoc command.
 
-	perldoc Giddy::Role::QueryParser
+	perldoc Giddy::Role::DocumentMatcher
 
 You can also look for information at:
 

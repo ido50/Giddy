@@ -10,9 +10,9 @@ use Test::Git;
 
 has_git();
 
-plan tests => 51;
+plan tests => 56;
 
-my $tmpdir = tempdir(CLEANUP => 1);
+my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
 
 # create a new Giddy object
@@ -50,7 +50,7 @@ my $json = $db->find_one($json_p);
 is($json->{_body}, '{ how: "so" }', 'JSON working content OK');
 
 my $text = $db->find_one($text_p);
-is($text->{_path}, $text_p, 'Text article loaded OK');
+is($text->{_name}, 'asdf.txt', 'Text article loaded OK');
 
 # get the root collection
 my $root = $db->get_collection;
@@ -88,7 +88,7 @@ is($c2->count, 1, 'Article found OK');
 # grep for some stuff
 my $g0 = $coll->grep_one('how');
 ok($g0, 'Found something when grepping for "how" in collection');
-is($g0->{_path}, '/collection/index.json', 'Found index.json when grepping for "how" in collection');
+is($g0->{_name}, 'index.json', 'Found index.json when grepping for "how" in collection');
 
 # drop the collection
 $coll->drop;
@@ -117,26 +117,26 @@ $db->commit('created some documents');
 my $f1 = $root->find({ imdb_score => { '$exists' => 1 } });
 my @r1 = $f1->all;
 is($f1->count, 2, 'Got 2 results as expected when searching by $exists => 1');
-ok(($r1[0]->{_path} eq '/two' && $r1[1]->{_path} eq '/four') || ($r1[1]->{_path} eq '/two' && $r1[0]->{_path} eq '/four'), 'Got the correct results when searching by $exists => 1');
+ok(($r1[0]->{_name} eq 'two' && $r1[1]->{_name} eq 'four') || ($r1[1]->{_name} eq 'two' && $r1[0]->{_name} eq 'four'), 'Got the correct results when searching by $exists => 1');
 
 my $f2 = $root->find({ imdb_score => { '$exists' => 0 } });
 is($f2->count, 4, 'Got 4 results as expected when searching by $exists => 0');
 
 my $f3 = $root->find({ imdb_score => { '$gt' => 7.5 } });
-is_deeply([$f3->all], [{ _path => '/four', title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8 }], 'Got the correct result when searching by $gt => 7.5');
+is_deeply([$f3->all], [{ _name => 'four', title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8 }], 'Got the correct result when searching by $gt => 7.5');
 
 my $f4 = $root->find({ starring => 'Jesse Eisenberg' });
 my @r4 = $f4->all;
 is($f4->count, 2, 'Got 2 results as expected when searching by starring => Jesse Eisenberg');
-ok(($r4[0]->{_path} eq '/two' && $r4[1]->{_path} eq '/four') || ($r4[1]->{_path} eq '/two' && $r4[0]->{_path} eq '/four'), 'Got the correct results when searching by starring => Jesse Eisenberg');
+ok(($r4[0]->{_name} eq 'two' && $r4[1]->{_name} eq 'four') || ($r4[1]->{_name} eq 'two' && $r4[0]->{_name} eq 'four'), 'Got the correct results when searching by starring => Jesse Eisenberg');
 
 my $f5 = $root->find({ subject => qr/Movies/i });
 is($f5->count, 1, 'Got 1 result as expected when searching by subject => qr/Movies/i');
-is(($f5->all)[0]->{_path}, '/three', 'Got the correct result when searching by subject => qr/Movies/i');
+is(($f5->all)[0]->{_name}, 'three', 'Got the correct result when searching by subject => qr/Movies/i');
 
 my $f6 = $root->find({ year => { '$gte' => 2009 }, starring => qr/^Kristen/ });
 is($f6->count, 1, 'Got 1 result as expected when searching by year => { $gte => 2009 }, starring => qr/^Kristen/');
-is(($f6->all)[0]->{_path}, '/two', 'Got the correct result when searching by year => { $gte => 2009 }, starring => qr/^Kristen/');
+is(($f6->all)[0]->{_name}, 'two', 'Got the correct result when searching by year => { $gte => 2009 }, starring => qr/^Kristen/');
 
 my $f7 = $root->find({ subject => { '$ne' => 'Lorem Ipsum' } });
 my @f7 = $f7->all;
@@ -146,7 +146,7 @@ ok(($f7[0]->{subject} eq '2009 Movies' && $f7[1]->{subject} eq 'About Giddy') ||
 my $f8 = $root->find({ starring => { '$size' => 3 }, year => { '$nin' => [2006 .. 2008] } });
 my @f8 = $f8->all;
 is($f8->count, 1, 'Got 1 result as expected when searching by starring => { $size => 3 }, year => { $nin => [2006 .. 2008] }');
-is($f8[0]->{_path}, '/four', 'Got the correct result when searching by starring => { $size => 3 }, year => { $nin => [2006 .. 2008] }');
+is($f8[0]->{_name}, 'four', 'Got the correct result when searching by starring => { $size => 3 }, year => { $nin => [2006 .. 2008] }');
 
 my $f9 = $root->find({ starring => { '$all' => ['Jesse Eisenberg', 'Woody Harrelson'] } });
 my @f9 = $f9->all;
@@ -156,7 +156,7 @@ is($f9[0]->{title}, 'Zombieland', 'Got the correct result when searching by star
 my $f10 = $root->find({ regex => { '$type' => 11 } });
 my @f10 = $f10->all;
 is($f10->count, 1, 'Got 1 result as expected when searching by regex => { $type => 11 }');
-is($f10[0]->{_path}, '/one', 'Got the correct result when searching by regex => { $type => 11 }');
+is($f10[0]->{_name}, 'one', 'Got the correct result when searching by regex => { $type => 11 }');
 
 my $f11 = $root->find({ starring => { '$type' => 4 } });
 my @f11 = $f11->all;
@@ -166,19 +166,31 @@ is($f11->count, 3, 'Got 3 results as expected when searching by starring => { $t
 my $g1 = $root->grep('Emma Stone');
 my @g1 = $g1->all;
 is($g1->count, 2, 'Got 2 results as expected when grepping by Emma Stone');
-ok(($g1[0]->{_path} eq '/four' && $g1[1]->{_path} eq '/five') || ($g1[1]->{_path} eq '/four' && $g1[0]->{_path} eq '/five'), 'Got the correct results when grepping by Emma Stone');
+ok(($g1[0]->{_name} eq 'four' && $g1[1]->{_name} eq 'five') || ($g1[1]->{_name} eq 'four' && $g1[0]->{_name} eq 'five'), 'Got the correct results when grepping by Emma Stone');
 
 my $g2 = $root->grep(['Michael Cera', 'Woody Harrelson'], { 'or' => 1 });
 my @g2 = $g2->all;
 is($g2->count, 2, 'Got 2 results as expected when grepping by Michael Cera or Woody Harrelson');
-ok(($g2[0]->{_path} eq '/four' && $g2[1]->{_path} eq '/five') || ($g2[1]->{_path} eq '/four' && $g2[0]->{_path} eq '/five'), 'Got the correct results when grepping by Michael Cera or Woody Harrelson');
+ok(($g2[0]->{_name} eq 'four' && $g2[1]->{_name} eq 'five') || ($g2[1]->{_name} eq 'four' && $g2[0]->{_name} eq 'five'), 'Got the correct results when grepping by Michael Cera or Woody Harrelson');
 
 my $g3 = $root->grep(['Jesse Eisenberg', 'Woody Harrelson']);
 my @g3 = $g3->all;
 is($g3->count, 1, 'Got 1 result as expected when grepping by Michael Cera and Woody Harrelson');
-is($g3[0]->{_path}, '/four', 'Got the correct result when grepping by Michael Cera and Woody Harrelson');
+is($g3[0]->{_name}, 'four', 'Got the correct result when grepping by Michael Cera and Woody Harrelson');
 
 my $g4 = $root->grep;
 is($g4->count, 6, 'Got all documents in collection when grepping by nothing');
+
+# search for some documents by _name
+my $f12 = $root->find({ _name => 'one' });
+is($f12->count, 1, 'Found 1 document as expected when searching by _name => one');
+is($f12->next->{_name}, 'one', 'Found the correct document when searching by name => one');
+
+my $f13 = $root->find({ _name => qr/^t/, starring => { '$exists' => 0 } });
+is($f13->count, 1, 'Found 1 document as expected when searching by _name => qr/^t/, starring => { $exists => 0 }');
+is($f13->first->{_name}, 'three', 'Found the correct document when searching by _name => qr/^t/, starring => { $exists => 0 }');
+
+my $f14 = $root->find({ _name => { '$ne' => 'two' } });
+is($f14->count, 5, 'Found 5 documents as expected when searching by _name => { $ne => two }');
 
 done_testing();

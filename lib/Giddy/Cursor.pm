@@ -186,7 +186,7 @@ sub _load_result {
 			return $self->_loaded->{$result->{document_file}};
 		} else {
 			my $doc = $self->_query->{coll}->_load_document_file($result->{document_file}, $self->_query->{opts}->{working});
-			$self->_add_loaded($doc);
+			$self->_add_loaded($result->{document_file}, $doc);
 			return $doc;
 		}
 	} elsif ($result->{document_dir}) {
@@ -194,22 +194,22 @@ sub _load_result {
 			return $self->_loaded->{$result->{document_dir}};
 		} else {
 			my $doc = $self->_query->{coll}->_load_document_dir($result->{document_dir}, $self->_query->{opts}->{working});
-			$self->_add_loaded($doc);
+			$self->_add_loaded($result->{document_dir}, $doc);
 			return $doc;
 		}
 	}
 }
 
-=head2 _add_loaded( \%doc )
+=head2 _add_loaded( $path, \%doc )
 
 Adds the loaded document to the cursor
 
 =cut
 
 sub _add_loaded {
-	my ($self, $doc) = @_;
+	my ($self, $path, $doc) = @_;
 
-	$self->_loaded->{$doc->{_path}} = $doc;
+	$self->_loaded->{$path} = $doc;
 }
 
 =head1 AUTHOR
