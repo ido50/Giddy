@@ -10,7 +10,7 @@ use Test::Git;
 
 has_git();
 
-plan tests => 60;
+plan tests => 61;
 
 my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -201,6 +201,9 @@ ok(($u1->{docs}->[0] eq 'two' && $u1->{docs}->[1] eq 'four') || ($u1->{docs}->[1
 my $u2 = $root->update({ _name => 'about' }, { '$set' => { updated => time() } });
 is($u2->{n}, 1, 'u2 updated 1 document as expected');
 is($u2->{docs}->[0], 'about', 'u2 updated the correct document');
+
+my $u3 = $root->update({ imdb_score => { '$exists' => 1 } }, { '$rename' => { year => 'release_year' }, '$inc' => { imdb_score => -10 } }, { multiple => 1 });
+is($u3->{n}, 2, 'u3 updated 2 documents as expected');
 
 $db->commit('updated some documents');
 

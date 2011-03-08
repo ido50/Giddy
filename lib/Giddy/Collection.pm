@@ -174,7 +174,9 @@ sub grep {
 	return $cursor;
 }
 
-=head3 grep_one( \@query, [ \%options ] )
+=head3 grep_one( [ $string, \%options ] )
+
+=head3 grep_one( [ \@strings, \%options ] )
 
 =cut
 
@@ -182,11 +184,11 @@ sub grep_one {
 	shift->grep(@_)->first;
 }
 
-=head3 count( $name, \%options )
+=head3 count( [ $name, \%options ] )
 
 Shortcut for C<< find($name, $options)->count() >>.
 
-=head3 count( \%query, \%options )
+=head3 count( [ \%query, \%options ] )
 
 Shortcut for C<< find($query, $options)->count() >>.
 
@@ -256,9 +258,9 @@ sub batch_insert {
 	return @paths;
 }
 
-=head3 update( $name, \%object, \%options )
+=head3 update( $name, \%object, [ \%options ] )
 
-=head3 update( \%query, \%object, \%options )
+=head3 update( \%query, \%object, [ \%options ] )
 
 =cut
 

@@ -10,7 +10,7 @@ use Test::Git;
 
 has_git();
 
-plan tests => 55;
+plan tests => 60;
 
 my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -181,5 +181,17 @@ is($f13->first->{_name}, 'three', 'Found the correct document when searching by 
 
 my $f14 = $root->find({ _name => { '$ne' => 'two' } }, { working => 1 });
 is($f14->count, 5, 'Found 5 documents as expected when searching by _name => { $ne => two }');
+
+# try to update a document
+my $u1 = $root->update({ starring => 'Jesse Eisenberg' }, { '$pull' => { starring => 'Jesse Eisenberg' }, '$push' => { starring => 'Jesse Fakerberg' } }, { working => 1, multiple => 1 });
+is($u1->{n}, 2, 'u1 updated 2 documents as expected');
+ok(($u1->{docs}->[0] eq 'two' && $u1->{docs}->[1] eq 'four') || ($u1->{docs}->[1] eq 'two' && $u1->{docs}->[0] eq 'four'), 'u1 updated the correct documents');
+
+my $u2 = $root->update({ _name => 'about' }, { '$set' => { updated => time() } }, { working => 1 });
+is($u2->{n}, 1, 'u2 updated 1 document as expected');
+is($u2->{docs}->[0], 'about', 'u2 updated the correct document');
+
+my $u3 = $root->update({ imdb_score => { '$exists' => 1 } }, { '$rename' => { year => 'release_year' }, '$inc' => { imdb_score => -10 } }, { working => 1, multiple => 1 });
+is($u3->{n}, 2, 'u3 updated 2 documents as expected');
 
 done_testing();
