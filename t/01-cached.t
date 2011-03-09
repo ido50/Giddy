@@ -10,7 +10,7 @@ use Test::Git;
 
 has_git();
 
-plan tests => 61;
+plan tests => 65;
 
 my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -206,5 +206,18 @@ my $u3 = $root->update({ imdb_score => { '$exists' => 1 } }, { '$rename' => { ye
 is($u3->{n}, 2, 'u3 updated 2 documents as expected');
 
 $db->commit('updated some documents');
+
+# let's remove some documents
+$root->remove('about');
+ok(!-e File::Spec->catdir($tmpdir, 'about'), 'about document removed OK');
+$root->remove({ _name => qr/^t/ }, { multiple => 1 });
+ok(!-e File::Spec->catdir($tmpdir, 'two') && !-e File::Spec->catdir($tmpdir, 'three'), 'two and three documents removed OK');
+# We should still be able to find the files
+my $two = $root->find_one('two');
+ok($two->{_name} eq 'two' && $two->{release_year} == 2009, 'two is still there since we haven\'t commited yet');
+$db->commit('removed some documents');
+# now we shouldn't be able to find two
+$two = $root->find_one('two');
+ok(!defined $two, 'two not there anymore since we have commited its removal');
 
 done_testing();

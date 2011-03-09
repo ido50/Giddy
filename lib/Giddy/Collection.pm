@@ -314,6 +314,59 @@ sub update {
 	return $updated;
 }
 
+=head3 remove( [ $name, \%options ] )
+
+=head3 remove( [ \%query, \%options ] )
+
+=cut
+
+sub remove {
+	my ($self, $query, $options) = @_;
+
+	croak "remove() expects a query string (can be empty) or hash-ref (can also be empty)."
+		if defined $query && ref $query && ref $query ne 'HASH';
+	croak "remove() expects a hash-ref of options."
+		if $options && ref $options ne 'HASH';
+
+	$query ||= '';
+	my $cursor = $self->find($query, $options);
+
+	my $deleted = { docs => [], n => 0 };
+
+	# assuming query was a name search and not an attribute search,
+	# i don't want to unnecessarily load all document just so i could
+	# delete them, so I'm gonna just iterate through the cursor's
+	# _results array:
+	my @docs = $options->{multiple} ? @{$cursor->_results || []} : $cursor->count ? ($cursor->_results->[0]) : ();
+	foreach (@docs) {
+		if ($_->{document_file}) {
+			# get the file's name and search path
+			my $spath = ($_->{document_file} =~ m!^/(.+)$!)[0];
+			my $name  = ($_->{document_file} =~ m!/([^/]+)$!)[0];
+			
+			# remove the file
+			$self->_database->_repo->run('rm', '-f', $spath);
+
+			# add some info about this deletion
+			$deleted->{n} += 1;
+			push(@{$deleted->{docs}}, $name);
+		} elsif ($_->{document_dir}) {
+			# get the document's name and search path
+			my $spath = ($_->{document_dir} =~ m!^/(.+)$!)[0];
+			my $name  = ($_->{document_dir} =~ m!/([^/]+)$!)[0];
+
+			# remove the document
+			$self->_database->_repo->run('rm', '-r', '-f', $spath);
+
+			# add some info about this deletion
+			$deleted->{n} += 1;
+			push(@{$deleted->{docs}}, $name);
+		}
+	}
+
+	return $deleted;
+}
+
 =head2 COLLECTION OPERATIONS
 
 =head3 drop()

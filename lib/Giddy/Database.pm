@@ -81,8 +81,6 @@ changes.
 sub commit {
 	my ($self, $msg) = @_;
 
-	return unless scalar @{$self->_marked};
-
 	$msg ||= "Commiting ".scalar(@{$self->_marked})." changes";
 
 	# commit
