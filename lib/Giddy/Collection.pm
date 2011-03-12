@@ -8,7 +8,7 @@ use namespace::autoclean;
 use Carp;
 use File::Spec;
 use File::Util;
-use Giddy::Cursor;
+use Giddy::Collection::InMemory;
 use Tie::IxHash;
 
 has 'path' => (is => 'ro', isa => 'Str', default => '/');
@@ -16,6 +16,8 @@ has 'path' => (is => 'ro', isa => 'Str', default => '/');
 has '_database' => (is => 'ro', isa => 'Giddy::Database', required => 1);
 
 has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
+
+has '_loc' => (is => 'ro', isa => 'Int', default => 0, writer => '_set_loc');
 
 with	'Giddy::Role::DocumentLoader',
 	'Giddy::Role::DocumentMatcher',
@@ -45,53 +47,74 @@ The L<Giddy::Database> object the collection belongs to. Required.
 
 A L<File::Util> object used by the module. Required.
 
-=head2 _mt
+=head2 _loc
 
-A L<MIME::Types> object used by the module. Automatically created.
+An integer representing the current location of the iterator in the results array.
+Not to be used externally.
 
 =head1 OBJECT METHODS
 
 =head2 DOCUMENT QUERYING
 
-=head3 find( [ $name, \%options ] )
-
-Searches the Giddy repository for documents that match the provided
-file name. If C<$name> is empty or not provided, every document in the
-collection will be matched.
-
 =head3 find( [ \%query, \%options ] )
 
-Searches the Giddy repository for documents that match the provided query.
+Searches the collection for documents that match the provided query.
 If no query is given, every document in the collection will be matched.
 
-Both methods return a L<Giddy::Cursor> object.
+=head3 find( [ $name, \%options ] )
 
-Searching by name is much faster than searching by query, as Giddy isn't
-forced to load and deserialize every document.
+Searches the collection for documents (more correctly "a document")
+whoe name equals C<$name>. This is a shortcut for C<< find({ _name => $name }, $options) >>.
+
+=head2 find( [ $regex, \%options ] )
+
+Searches the collection for documents whose name matches the regular
+expression provided. This is a shortcut for C<< find({ _name => qr/some_regex/ }, $options >>.
+
+Searching just by name (either for equality or with a regex) is much faster
+than searching by query, as Giddy isn't forced to load and deserialize
+every document.
 
 =cut
 
 sub find {
 	my ($self, $query, $opts) = @_;
 
+	croak "find() expects either a scalar, a regex or a hash-ref for the query."
+		if defined $query && ref $query && ref $query ne 'HASH' && ref $query ne 'Regexp';
+
 	croak "find() expected a hash-ref of options."
-		if $opts && ref $opts ne 'HASH';
+		if defined $opts && ref $opts ne 'HASH';
 
 	$query ||= '';
 	$opts ||= {};
 
-	if (ref $query && ref $query eq 'HASH') {
-		return $self->_match_by_query($query, $opts);
-	} else {
-		return $self->_match_by_name($query, $opts);
+	$query = { _name => $query } if !ref $query || ref $query eq 'Regexp';
+
+	# stage 1: create an in-memory collection
+	my $coll = Giddy::Collection::InMemory->new(
+		path => $self->path,
+		_database => $self->_database,
+		_futil => $self->_futil,
+		_query => { find => $query, coll => $self, opts => $opts },
+		_documents => $self->isa('Giddy::Collection::InMemory') ? $self->_documents() : $self->_documents($opts->{working})
+	);
+
+	# stage 2: are we matching by name? we do if query is a scalar
+	# or if the query hash-ref has the _name key
+	if (exists $query->{_name}) {
+		# let's find documents that match this name
+		$coll->_set_documents($self->_match_by_name(delete($query->{_name}), $opts));
 	}
+
+	# stage 3: are we querying by document attributes too?
+	$coll->_set_documents($coll->_match_by_query($query, $opts))
+		if scalar keys %$query;
+
+	return $coll;
 }
 
-=head3 find_one( [ $name, \%options ] )
-
-Same as calling C<< find($name, $options)->first() >>.
-
-=head3 find_one( [ \%query, \%options ] )
+=head3 find_one( [ $query, \%options ] )
 
 Same as calling C<< find($query, $options)->first() >>.
 
@@ -128,7 +151,12 @@ sub grep {
 	$query = [$query] if !ref $query;
 	$opts ||= {};
 
-	my $cursor = Giddy::Cursor->new(_query => { grep => $query, coll => $self, opts => $opts });
+	my $coll = Giddy::Collection::InMemory->new(
+		path => $self->path,
+		_database => $self->_database,
+		_futil => $self->_futil,
+		_query => { grep => $query, coll => $self, opts => $opts }
+	);
 
 	my @cmd = ('grep', '-I', '--name-only', '--max-depth', 1);
 	push(@cmd, '--all-match') unless $opts->{'or'}; # that's how we do an 'and' search'
@@ -144,16 +172,17 @@ sub grep {
 
 	push(@cmd, { cwd => File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath) }) if $self->_spath;
 
+	my @docs;
 	my $docs = {};
 	if ($opts->{working}) {
 		foreach ($self->_database->_repo->run(@cmd)) {
 			if (m!/!) {
 				next if $docs->{$`};
-				$cursor->_add_result({ document_dir => File::Spec->catdir($self->path, $`) });
+				push(@docs, [{ document_dir => File::Spec->catdir($self->path, $`) }]);
 				$docs->{$`} = 1;
 			} else {
 				next if $docs->{$_};
-				$cursor->_add_result({ document_file => File::Spec->catfile($self->path, $_) });
+				push(@docs, [{ document_file => File::Spec->catfile($self->path, $_) }]);
 				$docs->{$_} = 1;
 			}
 		}
@@ -161,41 +190,31 @@ sub grep {
 		foreach ($self->_database->_repo->run(@cmd)) {
 			if (m!/!) {
 				next if $docs->{$`};
-				$cursor->_add_result({ document_dir => File::Spec->catdir($self->path, $`) });
+				push(@docs, [{ document_dir => File::Spec->catdir($self->path, $`) }]);
 				$docs->{$`} = 1;
 			} else {
 				next if $docs->{$_};
-				$cursor->_add_result({ document_file => File::Spec->catfile($self->path, $_) });
+				push(@docs, [{ document_file => File::Spec->catfile($self->path, $_) }]);
 				$docs->{$_} = 1;
 			}
 		}
 	}
 
-	return $cursor;
+	$coll->_set_documents(\@docs);
+
+	return $coll;
 }
 
 =head3 grep_one( [ $string, \%options ] )
 
 =head3 grep_one( [ \@strings, \%options ] )
 
+Same as calling C<< grep( $string(s), $options)->first >>.
+
 =cut
 
 sub grep_one {
 	shift->grep(@_)->first;
-}
-
-=head3 count( [ $name, \%options ] )
-
-Shortcut for C<< find($name, $options)->count() >>.
-
-=head3 count( [ \%query, \%options ] )
-
-Shortcut for C<< find($query, $options)->count() >>.
-
-=cut
-
-sub count {
-	shift->find(@_)->count;
 }
 
 =head2 DOCUMENT MANIPULATION
@@ -329,6 +348,7 @@ sub remove {
 		if $options && ref $options ne 'HASH';
 
 	$query ||= '';
+
 	my $cursor = $self->find($query, $options);
 
 	my $deleted = { docs => [], n => 0 };
@@ -336,8 +356,8 @@ sub remove {
 	# assuming query was a name search and not an attribute search,
 	# i don't want to unnecessarily load all document just so i could
 	# delete them, so I'm gonna just iterate through the cursor's
-	# _results array:
-	my @docs = $options->{multiple} ? @{$cursor->_results || []} : $cursor->count ? ($cursor->_results->[0]) : ();
+	# _documents array:
+	my @docs = $options->{multiple} ? @{$cursor->_documents || []} : $cursor->count ? ($cursor->_documents->[0]) : ();
 	foreach (@docs) {
 		if ($_->{document_file}) {
 			# get the file's name and search path
@@ -367,6 +387,101 @@ sub remove {
 	return $deleted;
 }
 
+=head2 DOCUMENTS ITERATION
+
+=head3 count()
+
+Returns the number of documents in the collection.
+
+=cut
+
+sub count {
+	scalar shift->_documents;
+}
+
+=head3 all()
+
+Returns an array of all the documents in the collection (after loading).
+
+=cut
+
+sub all {
+	my $self = shift;
+	my @results;
+	while ($self->has_next) {
+		push(@results, $self->next);
+	}
+	return @results;
+}
+
+=head3 has_next()
+
+Returns a true value if the iterator hasn't reached the last of the documents
+(and thus C<next()> can be called).
+
+=cut
+
+sub has_next {
+	$_[0]->_loc < $_[0]->count;
+}
+
+=head3 next()
+
+Returns the document found by the query from the iterator's current
+position, and increases the iterator to point to the next document.
+
+=cut
+
+sub next {
+	my $self = shift;
+
+	return unless $self->has_next;
+
+	my $next = $self->_load_document($self->_documents->[$self->_loc]);
+	$self->_inc_loc;
+	return $next;
+}
+
+=head2 rewind()
+
+Resets to iterator to point to the first document.
+
+=cut
+
+sub rewind {
+	$_[0]->_set_loc(0);
+}
+
+=head2 first()
+
+Returns the first document in the collection (or C<undef> if none exist),
+regardless of the iterator's current position (which will not change).
+
+=cut
+
+sub first {
+	my $self = shift;
+
+	return unless $self->count;
+
+	return $self->_load_document($self->_documents->[0]);
+}
+
+=head2 last()
+
+Returns the last document in the collection (or C<undef> if none exist),
+regardless of the iterator's current position (which will not change).
+
+=cut
+
+sub last {
+	my $self = shift;
+
+	return unless $self->count;
+
+	return $self->_load_document($self->_documents->[$self->count - 1]);
+}
+
 =head2 COLLECTION OPERATIONS
 
 =head3 drop()
@@ -389,12 +504,108 @@ sub drop {
 
 The following methods are only to be used internally.
 
-=head3 _spath()
+=head2 _spath()
 
 =cut
 
 sub _spath {
 	($_[0]->path =~ m!^/(.+)$!)[0];
+}
+
+=head2 _documents( [ $working ] )
+
+Returns a list of all documents in the collection. If C<$working> is true,
+the list returned will be of all documents in the collection's working
+directory, otherwise - only cached documents will be returned.
+
+=cut
+
+sub _documents {
+	my ($self, $working) = @_;
+
+	my $docs = [];
+	foreach ($working ? sort($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath))) : sort($self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:'))) {
+		my $full_path = File::Spec->catfile($self->path, $_);
+		my $search_path = ($full_path =~ m!^/(.+)$!)[0];
+
+		if ($working) {
+			# what is the type of this thing?
+			if (-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path) && -e File::Spec->catfile($self->_database->_repo->work_tree, $search_path, 'attributes.yaml')) {
+				# this is a document directory
+				push(@$docs, { document_dir => $full_path });
+			} elsif (!-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path)) {
+				# this is a document file
+				push(@$docs, { document_file => $full_path });
+			}
+		} else {
+			# what is the type of this thing?
+			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
+			if ($t eq 'tree') {
+				# this is either a collection or a document
+				if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
+					# great, this is a document directory, let's add it
+					push(@$docs, { document_dir => $full_path });
+				}
+			} elsif ($t eq 'blob') {
+				# cool, this is a document file
+				push(@$docs, { document_file => $full_path });
+			}
+		}
+	}
+
+	return $docs;
+}
+
+=head2 _inc_loc()
+
+Increases the iterator's position by one.
+
+=cut
+
+sub _inc_loc {
+	my $self = shift;
+
+	$self->_set_loc($self->_loc + 1);
+}
+
+=head2 _load_document( \%res )
+
+Loads a document from the collection.
+
+=cut
+
+sub _load_document {
+	my ($self, $dochash) = @_;
+
+	if ($dochash->{document_file}) {
+		if (exists $self->_loaded->{$dochash->{document_file}}) {
+			return $self->_loaded->{$dochash->{document_file}};
+		} else {
+			my $doc = $self->_query->{coll}->_load_document_file($dochash->{document_file}, $self->_query->{opts}->{working});
+			$self->_add_loaded($dochash->{document_file}, $doc);
+			return $doc;
+		}
+	} elsif ($dochash->{document_dir}) {
+		if (exists $self->_loaded->{$dochash->{document_dir}}) {
+			return $self->_loaded->{$dochash->{document_dir}};
+		} else {
+			my $doc = $self->_query->{coll}->_load_document_dir($dochash->{document_dir}, $self->_query->{opts}->{working}, $self->_query->{opts}->{skip_binary});
+			$self->_add_loaded($dochash->{document_dir}, $doc);
+			return $doc;
+		}
+	}
+}
+
+=head2 _add_loaded( $path, \%doc )
+
+Adds the loaded document to the cursor
+
+=cut
+
+sub _add_loaded {
+	my ($self, $path, $doc) = @_;
+
+	$self->_loaded->{$path} = $doc;
 }
 
 =head1 AUTHOR

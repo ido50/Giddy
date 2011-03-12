@@ -2,8 +2,9 @@ package Giddy::Role::DocumentStorer;
 
 use Any::Moose 'Role';
 use namespace::autoclean;
-use YAML::Any;
+
 use Carp;
+use YAML::Any;
 
 requires 'path';
 requires '_futil';

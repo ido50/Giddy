@@ -2,9 +2,10 @@ package Giddy::Role::DocumentLoader;
 
 use Any::Moose 'Role';
 use namespace::autoclean;
-use YAML::Any;
-use Try::Tiny;
+
 use Carp;
+use Try::Tiny;
+use YAML::Any;
 
 requires 'path';
 requires '_futil';

@@ -105,11 +105,11 @@ $root->insert('five', { title => 'Superbad', starring => ['Jonah Hill', 'Michael
 # let's perform different find queries
 my $f1 = $root->find({ imdb_score => { '$exists' => 1 } }, { working => 1 });
 my @r1 = $f1->all;
-is($f1->count, 2, 'Got 2 results as expected when searching by $exists => 1');
+is($f1->count, 2, 'Got 2 results as expected when searching by imdb_score => { $exists => 1 }');
 ok(($r1[0]->{_name} eq 'two' && $r1[1]->{_name} eq 'four') || ($r1[1]->{_name} eq 'two' && $r1[0]->{_name} eq 'four'), 'Got the correct results when searching by $exists => 1');
 
 my $f2 = $root->find({ imdb_score => { '$exists' => 0 } }, { working => 1 });
-is($f2->count, 4, 'Got 4 results as expected when searching by $exists => 0');
+is($f2->count, 4, 'Got 4 results as expected when searching by imdb_score => { $exists => 0 }');
 
 my $f3 = $root->find({ imdb_score => { '$gt' => 7.5 } }, { working => 1 });
 is_deeply([$f3->all], [{ _name => 'four', title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8 }], 'Got the correct result when searching by $gt => 7.5');

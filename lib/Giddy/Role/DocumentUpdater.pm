@@ -2,6 +2,7 @@ package Giddy::Role::DocumentUpdater;
 
 use Any::Moose 'Role';
 use namespace::autoclean;
+
 use Carp;
 
 requires 'path';
