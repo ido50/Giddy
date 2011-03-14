@@ -7,6 +7,7 @@ use namespace::autoclean;
 
 use Carp;
 use Git::Repository;
+use Git::Repository::Log::Iterator;
 use Giddy::Collection;
 
 =head1 NAME
@@ -156,6 +157,82 @@ Same as calling C<< find($path, $options)->first() >>.
 
 sub find_one {
 	shift->find(@_)->first;
+}
+
+=head2 log( [ $num ] )
+
+If C<$num> is provided (can be zero), will return a L<Git::Repository::Log>
+object of the commit performed C<$num> commits ago. So 0 will return the
+latest commit.
+
+If num isn't provided, will return a L<Git::Repository::Log::Iterator>
+object starting from the latest commit.
+
+=cut
+
+sub log {
+	my ($self, $num_ago) = @_;
+
+	if (defined $num_ago && $num_ago =~ m/^\d+$/) {
+		return Git::Repository::Log::Iterator->new($self->_repo, "HEAD~$num_ago")->next;
+	} else {
+		return Git::Repository::Log::Iterator->new($self->_repo, 'HEAD');
+	}
+}
+
+=head2 undo( [ $num ] )
+
+=head2 cancel( [ $num ] )
+
+Cancels the C<$num>th latest commit performed (if $num is 0 or not passed, the
+latest commit is cancelled). Any changes performed by the commit cancelled
+are forever lost. For an alternative that doesn't lose information, see
+C<revert()>.
+
+If a commit numbered C<$num> isn't found, this method will croak.
+
+=cut
+
+sub undo {
+	my ($self, $num) = @_;
+
+	$num ||= 0;
+
+	my $log = $self->log($num+1);
+	croak "Can't find commit number $num." unless $log;
+	$self->_repo->run('reset', '--hard', $log->commit);
+}
+
+sub cancel { shift->undo(@_) }
+
+=head2 revert( [ $num ] )
+
+Reverts the database back to the commit just before the commit performed
+C<$num>th commits ago and creates a new commit out of it. In other words,
+a snapshot of the database from the source commit (performed C<$num + 1>
+commits ago) will be taken and used to replace the database's current
+state. Then, a new commit is performed. Thus, the changes performed
+between the source commit and the current commit are preserved in the log.
+This is different than C<undo()>, which completely removes all commits
+performed between the source commit and the current commit. Actually, a
+revert can be cancelled by an C<undo()> operation, as it is a commit
+in itself.
+
+C<$num> will be zero by default, in which case the latest commit is
+reverted.
+
+If a commit numbered C<$num> isn't found, this method will croak.
+
+=cut
+
+sub revert {
+	my ($self, $num) = @_;
+
+	$num ||= 0;
+
+	my $log = $self->log($num);
+	croak "Can't find commit number $num." unless $log;
+	$self->_repo->run('revert', $log->commit);
 }
 
 =head1 AUTHOR

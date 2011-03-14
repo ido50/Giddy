@@ -10,7 +10,7 @@ use Test::Git;
 
 has_git();
 
-plan tests => 69;
+plan tests => 71;
 
 my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -228,5 +228,15 @@ $db->commit('removed some documents');
 # now we shouldn't be able to find two
 $two = $root->find_one('two');
 ok(!defined $two, 'two not there anymore since we have commited its removal');
+
+# let's revert the latest commit and see if the documents are magically returned
+$db->revert;
+$two = $root->find_one('two');
+ok($two->{_name} eq 'two', 'two is back again');
+
+# let's undo the revert (yeah, i'm crazy like that)
+$db->undo;
+$two = $root->find_one('two');
+ok(!defined $two, 'two not there yet again');
 
 done_testing();
