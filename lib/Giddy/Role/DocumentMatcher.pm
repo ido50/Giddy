@@ -35,10 +35,10 @@ sub _match_by_name {
 	$opts ||= {};
 
 	# return all documents if we don't really have a query
-	$name eq '' && return $self->isa('Giddy::Collection::InMemory') ? $self->_documents() : $self->_documents($opts->{working});
+	$name eq '' && return $self->_documents;
 
 	my $docs = [];
-	foreach ($self->isa('Giddy::Collection::InMemory') ? @{$self->_documents()} : @{$self->_documents($opts->{working})}) {
+	foreach (@{$self->_documents}) {
 		my $doc_path = Path::Abstract->new($_->{document_dir} || $_->{document_file});
 		my $doc_name = $doc_path->last;
 		push(@$docs, [$_]) if $self->_attribute_matches({ _name => $doc_name }, '_name', $name);
@@ -58,16 +58,16 @@ sub _match_by_query {
 	$opts ||= {};
 
 	# return all documents if we don't really have a query
-	scalar keys %$query == 0 && return $self->isa('Giddy::Collection::InMemory') ? $self->_documents() : $self->_documents($opts->{working});
+	scalar keys %$query == 0 && $self->_documents;
 
 	my $docs = [];
-	foreach ($self->isa('Giddy::Collection::InMemory') ? @{$self->_documents()} : @{$self->_documents($opts->{working})}) {
+	foreach (@{$self->_documents}) {
 		# what is the type of this doc?
 		if ($_->{document_dir}) {
-			my $doc = $self->_load_document_dir($_->{document_dir}, $opts->{working});
+			my $doc = $self->_load_document_dir($_->{document_dir});
 			push(@$docs, [$_, $doc]) if $self->_document_matches($doc, $query);
 		} else {
-			my $doc = $self->_load_document_file($_->{document_file}, $opts->{working});
+			my $doc = $self->_load_document_file($_->{document_file});
 			push(@$docs, [$_, $doc]) if $self->_document_matches($doc, $query);
 		}
 	}

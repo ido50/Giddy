@@ -22,19 +22,17 @@ Giddy::Role::DocumentLoader - Provides document loading methods for Giddy::Colle
 
 =head1 METHODS
 
-=head3 _load_document_file( $path, [ $working ] )
+=head3 _load_document_file( $path )
 
 =cut
 
 sub _load_document_file {
-	my ($self, $path, $working) = @_;
+	my ($self, $path) = @_;
 
 	my $spath = $path;
 	$spath =~ s!^/!!;
 
-	my $content = $working ?
-		''.$self->_futil->load_file(File::Spec->catfile($self->_database->_repo->work_tree, $path)) :
-		''.$self->_database->_repo->run('show', 'HEAD:'.$spath);
+	my $content = ''.$self->_database->_repo->run('show', 'HEAD:'.$spath);
 
 	return unless $content;
 
@@ -55,43 +53,27 @@ sub _load_document_file {
 	};
 }
 
-=head3 _load_document_dir( $path, [ $working, $skip_binary ] )
+=head3 _load_document_dir( $path, [ $skip_binary ] )
 
 =cut
 
 sub _load_document_dir {
-	my ($self, $path, $working, $skip_bin) = @_;
+	my ($self, $path, $skip_bin) = @_;
 
 	my $spath = $path;
 	$spath =~ s!^/!!;
 
 	my $doc;
 
-	my $fpath = File::Spec->catdir($self->_database->_repo->work_tree, $spath);
+	# try to load the attributes
+	my $yaml = $self->_database->_repo->run('show', 'HEAD:'.File::Spec->catfile($spath, 'attributes.yaml'));
+	croak "Can't find/read attributes.yaml file of document $path." unless $yaml;
+	$doc = try { Load($yaml) } catch { {} };
 
-	if ($working) {
-		# try to load the attributes
-		my $yaml = $self->_futil->load_file(File::Spec->catfile($fpath, 'attributes.yaml'));
-		croak "Can't find/read attributes.yaml file of document $path." unless $yaml;
-		$doc = try { Load($yaml) } catch { {} };
-
-		# try to load binary files (unless we're skipping binary)
-		unless ($skip_bin) {
-			foreach (grep {!/^attributes\.yaml$/} $self->_futil->list_dir($fpath, '--files-only')) {
-				$doc->{$_} = File::Spec->catfile($path, $_);
-			}
-		}
-	} else {
-		# try to load the attributes
-		my $yaml = $self->_database->_repo->run('show', 'HEAD:'.File::Spec->catfile($spath, 'attributes.yaml'));
-		croak "Can't find/read attributes.yaml file of document $path." unless $yaml;
-		$doc = try { Load($yaml) } catch { {} };
-
-		# try to load binary files (unless we're skipping binary)
-		unless ($skip_bin) {
-			foreach (grep {!/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$spath)) {
-				$doc->{$_} = File::Spec->catfile($path, $_);
-			}
+	# try to load binary files (unless we're skipping binary)
+	unless ($skip_bin) {
+		foreach (grep {!/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$spath)) {
+			$doc->{$_} = File::Spec->catfile($path, $_);
 		}
 	}
 

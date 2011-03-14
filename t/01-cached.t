@@ -43,14 +43,14 @@ $db->commit( "Testing a commit" );
 
 # take a look at the contents of the articles
 my $html = $db->find_one($html_p);
-is($html->{_body}, '<h1>Giddy</h1>', 'HTML cached content OK');
+is($html->{_body}, '<h1>Giddy</h1>', 'HTML content OK');
 is($html->{user}, 'gitguy', 'HTML attributes OK');
 
 my $json = $db->find_one($json_p);
-is($json->{_body}, '{ how: "so" }', 'JSON working content OK');
+is($json->{_body}, '{ how: "so" }', 'JSON content OK');
 
 my $text = $db->find_one($text_p);
-is($text->{_name}, 'asdf.txt', 'Text article loaded OK');
+is($text->{_name}, 'asdf.txt', 'Text document loaded OK');
 
 # get the root collection
 my $root = $db->get_collection;

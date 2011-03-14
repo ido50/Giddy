@@ -159,27 +159,6 @@ sub find_one {
 	shift->find(@_)->first;
 }
 
-=head2 log( [ $num ] )
-
-If C<$num> is provided (can be zero), will return a L<Git::Repository::Log>
-object of the commit performed C<$num> commits ago. So 0 will return the
-latest commit.
-
-If num isn't provided, will return a L<Git::Repository::Log::Iterator>
-object starting from the latest commit.
-
-=cut
-
-sub log {
-	my ($self, $num_ago) = @_;
-
-	if (defined $num_ago && $num_ago =~ m/^\d+$/) {
-		return Git::Repository::Log::Iterator->new($self->_repo, "HEAD~$num_ago")->next;
-	} else {
-		return Git::Repository::Log::Iterator->new($self->_repo, 'HEAD');
-	}
-}
-
 =head2 undo( [ $num ] )
 
 =head2 cancel( [ $num ] )
@@ -233,6 +212,27 @@ sub revert {
 	my $log = $self->log($num);
 	croak "Can't find commit number $num." unless $log;
 	$self->_repo->run('revert', $log->commit);
+}
+
+=head2 log( [ $num ] )
+
+If C<$num> is provided (can be zero), will return a L<Git::Repository::Log>
+object of the commit performed C<$num> commits ago. So 0 will return the
+latest commit.
+
+If num isn't provided, will return a L<Git::Repository::Log::Iterator>
+object starting from the latest commit.
+
+=cut
+
+sub log {
+	my ($self, $num_ago) = @_;
+
+	if (defined $num_ago && $num_ago =~ m/^\d+$/) {
+		return Git::Repository::Log::Iterator->new($self->_repo, "HEAD~$num_ago")->next;
+	} else {
+		return Git::Repository::Log::Iterator->new($self->_repo, 'HEAD');
+	}
 }
 
 =head1 AUTHOR

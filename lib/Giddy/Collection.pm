@@ -99,7 +99,7 @@ sub find {
 		_database => $self->_database,
 		_futil => $self->_futil,
 		_query => { find => $query, coll => $self, opts => $opts },
-		_documents => $self->isa('Giddy::Collection::InMemory') ? $self->_documents() : $self->_documents($opts->{working})
+		_documents => $self->_documents()
 	);
 
 	# stage 2: are we matching by name? we do if query is a scalar
@@ -160,9 +160,8 @@ sub grep {
 		_query => { grep => $query, coll => $self, opts => $opts }
 	);
 
-	my @cmd = ('grep', '-I', '--name-only', '--max-depth', 1);
+	my @cmd = ('grep', '-I', '--name-only', '--max-depth', 1, '--cached');
 	push(@cmd, '--all-match') unless $opts->{'or'}; # that's how we do an 'and' search'
-	push(@cmd, '--cached') unless $opts->{'working'};
 
 	if (scalar @$query) {
 		foreach (@$query) {
@@ -177,14 +176,11 @@ sub grep {
 	my @docs;
 	my $docs = {};
 	foreach ($self->_database->_repo->run(@cmd)) {
-		# ignore documents which aren't in the collection (ugly hack for in-memory collections)
 		if (m!/!) {
-			next unless $self->document_exists($`, $opts->{working});
 			next if $docs->{$`};
 			push(@docs, [{ document_dir => File::Spec->catdir($self->path, $`) }]);
 			$docs->{$`} = 1;
 		} else {
-			next unless $self->document_exists($_, $opts->{working});
 			next if $docs->{$_};
 			push(@docs, [{ document_file => File::Spec->catfile($self->path, $_) }]);
 			$docs->{$_} = 1;
@@ -378,26 +374,6 @@ sub remove {
 	return $deleted;
 }
 
-=head2 document_exists( $name, [ $working ] )
-
-Returns a true value if a document named C<$named> exists in the collection.
-Useful for in-memory collections. If C<$working> is passed with a true
-value, search will be performed in the collection's working directory.
-
-=cut
-
-sub document_exists {
-	my ($self, $name, $working) = @_;
-
-	my $path = File::Spec->catfile($self->path, $name);
-	foreach ($self->isa('Giddy::Collection::InMemory') ? @{$self->_documents} : @{$self->_documents($working)}) {
-		my $f = $_->{document_dir} || $_->{document_file};
-		return 1 if $f eq $path;
-	}
-
-	return;
-}
-
 =head2 DOCUMENTS ITERATION
 
 =head3 count()
@@ -407,7 +383,73 @@ Returns the number of documents in the collection.
 =cut
 
 sub count {
-	scalar shift->_documents;
+	scalar @{shift->_documents};
+}
+
+=head3 sort( [ $order ] )
+
+Sorts the collection's documents. If C<$order> isn't provided, documents
+will be sorted alphabetically by name (documents are already sorted by
+name by default, so this is only useful for re-sorting).
+
+C<$order> can be any of the following:
+
+=over
+
+=item * An ordered L<Tie::IxHash> object.
+
+=item * An even-numbered array-ref (such as C<< [ 'attr1' => 1, 'attr2' => -1 ] >>).
+
+=back
+
+Of course we are sorting by attributes, so you can still use the '_name'
+attribute in C<$order>. When you give an attribute a positive true value,
+it will be sorted ascendingly. When you give a negative value, it will
+be sorted descendingly. So, for example:
+
+	$coll->sort([ 'birth_date' => -1, '_name' => 1 ])
+
+Will sort the documents in the collection descendingly by the 'birth_date'
+attribute, and then ascendingly by the document's name.
+
+Documents that miss any attributes from the C<$order> object always lean
+towards the end. If, for example, C<$order> is C<< [ date => 1 ] >>, then
+the documents will be sorted ascendingly by the 'date' attribute, and all
+documents that don't have the 'date' attribute will propagate to the end.
+
+=cut
+
+sub sort {
+	my ($self, $order) = @_;
+
+	croak "sort() expects a Tie::IxHash object or an even-numbered array-ref."
+		if $order && (
+			!ref $order ||
+			(ref $order eq 'ARRAY' && scalar @$order % 2 != 0) ||
+			(blessed $order && !$order->isa('Tie::IxHash'))
+		);
+
+	# no need to do anything if we have no documents (or only have 1)
+	return 1 unless $self->count > 1;
+
+	$order ||= [ '_name' => 1 ];
+
+	$order = Tie::IxHash->new($order)
+		unless blessed $order && $order->isa('Tie::IxHash');
+
+	if (scalar @$order == 1 && $order->[0] eq '_name') {
+		# if we're only sorting by name, there's no need to load
+		# the documents, so we can just go ahead and sort
+		
+	} else {
+		# we're gonna have to load the documents (if they're not
+		# already loaded).
+		my @docs;
+		foreach (@{$self->documents}) {
+			
+	}
+
+	return 1;
 }
 
 =head3 all()
@@ -523,44 +565,31 @@ sub _spath {
 	($_[0]->path =~ m!^/(.+)$!)[0];
 }
 
-=head2 _documents( [ $working ] )
+=head2 _documents()
 
-Returns an array-ref of all documents in the collection. If C<$working> is true,
-the list returned will be of all documents in the collection's working
-directory, otherwise - only cached documents will be returned.
+Returns an array-ref of all documents in the collection.
 
 =cut
 
 sub _documents {
-	my ($self, $working) = @_;
+	my $self = shift;
 
 	my $docs = [];
-	foreach ($working ? sort($self->_futil->list_dir(File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath))) : sort($self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:'))) {
+	foreach (sort $self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:')) {
 		my $full_path = File::Spec->catfile($self->path, $_);
 		my $search_path = ($full_path =~ m!^/(.+)$!)[0];
 
-		if ($working) {
-			# what is the type of this thing?
-			if (-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path) && -e File::Spec->catfile($self->_database->_repo->work_tree, $search_path, 'attributes.yaml')) {
-				# this is a document directory
+		# what is the type of this thing?
+		my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
+		if ($t eq 'tree') {
+			# this is either a collection or a document
+			if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
+				# great, this is a document directory, let's add it
 				push(@$docs, { document_dir => $full_path });
-			} elsif (!-d File::Spec->catdir($self->_database->_repo->work_tree, $search_path)) {
-				# this is a document file
-				push(@$docs, { document_file => $full_path });
 			}
-		} else {
-			# what is the type of this thing?
-			my $t = $self->_database->_repo->run('cat-file', '-t', "HEAD:$search_path");
-			if ($t eq 'tree') {
-				# this is either a collection or a document
-				if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
-					# great, this is a document directory, let's add it
-					push(@$docs, { document_dir => $full_path });
-				}
-			} elsif ($t eq 'blob') {
-				# cool, this is a document file
-				push(@$docs, { document_file => $full_path });
-			}
+		} elsif ($t eq 'blob') {
+			# cool, this is a document file
+			push(@$docs, { document_file => $full_path });
 		}
 	}
 
@@ -592,7 +621,7 @@ sub _load_document {
 		if (exists $self->_loaded->{$dochash->{document_file}}) {
 			return $self->_loaded->{$dochash->{document_file}};
 		} else {
-			my $doc = $self->_query->{coll}->_load_document_file($dochash->{document_file}, $self->_query->{opts}->{working});
+			my $doc = $self->_query->{coll}->_load_document_file($dochash->{document_file});
 			$self->_add_loaded($dochash->{document_file}, $doc);
 			return $doc;
 		}
@@ -600,7 +629,7 @@ sub _load_document {
 		if (exists $self->_loaded->{$dochash->{document_dir}}) {
 			return $self->_loaded->{$dochash->{document_dir}};
 		} else {
-			my $doc = $self->_query->{coll}->_load_document_dir($dochash->{document_dir}, $self->_query->{opts}->{working}, $self->_query->{opts}->{skip_binary});
+			my $doc = $self->_query->{coll}->_load_document_dir($dochash->{document_dir}, $self->_query->{opts}->{skip_binary});
 			$self->_add_loaded($dochash->{document_dir}, $doc);
 			return $doc;
 		}
