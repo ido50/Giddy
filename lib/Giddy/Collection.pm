@@ -448,12 +448,12 @@ sub sort {
 	$order = Tie::IxHash->new($order)
 		unless blessed $order && $order->isa('Tie::IxHash');
 
-	if (scalar @$order == 1 && $order->[0] eq '_name') {
+	if ($order->Length == 1 && $order->Keys(0) eq '_name') {
 		# if we're only sorting by name, there's no need to load
 		# the documents, so we can just go ahead and sort
 		$self->_documents->OrderByKey;
 		$self->_documents->Reorder(reverse $self->_documents->Keys)
-			if $order->[1] < 0;
+			if $order->FETCH('_name') < 0;
 	} else {
 		# we're gonna have to load the documents (if they're not
 		# already loaded).
