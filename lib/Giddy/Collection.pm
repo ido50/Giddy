@@ -11,6 +11,8 @@ use File::Util;
 use Giddy::Collection::InMemory;
 use Tie::IxHash;
 
+use Data::Dumper;
+
 has 'path' => (is => 'ro', isa => 'Str', default => '/');
 
 has '_database' => (is => 'ro', isa => 'Giddy::Database', required => 1);
@@ -174,29 +176,18 @@ sub grep {
 
 	my @docs;
 	my $docs = {};
-	if ($opts->{working}) {
-		foreach ($self->_database->_repo->run(@cmd)) {
-			if (m!/!) {
-				next if $docs->{$`};
-				push(@docs, [{ document_dir => File::Spec->catdir($self->path, $`) }]);
-				$docs->{$`} = 1;
-			} else {
-				next if $docs->{$_};
-				push(@docs, [{ document_file => File::Spec->catfile($self->path, $_) }]);
-				$docs->{$_} = 1;
-			}
-		}
-	} else {
-		foreach ($self->_database->_repo->run(@cmd)) {
-			if (m!/!) {
-				next if $docs->{$`};
-				push(@docs, [{ document_dir => File::Spec->catdir($self->path, $`) }]);
-				$docs->{$`} = 1;
-			} else {
-				next if $docs->{$_};
-				push(@docs, [{ document_file => File::Spec->catfile($self->path, $_) }]);
-				$docs->{$_} = 1;
-			}
+	foreach ($self->_database->_repo->run(@cmd)) {
+		# ignore documents which aren't in the collection (ugly hack for in-memory collections)
+		if (m!/!) {
+			next unless $self->document_exists($`, $opts->{working});
+			next if $docs->{$`};
+			push(@docs, [{ document_dir => File::Spec->catdir($self->path, $`) }]);
+			$docs->{$`} = 1;
+		} else {
+			next unless $self->document_exists($_, $opts->{working});
+			next if $docs->{$_};
+			push(@docs, [{ document_file => File::Spec->catfile($self->path, $_) }]);
+			$docs->{$_} = 1;
 		}
 	}
 
@@ -387,6 +378,26 @@ sub remove {
 	return $deleted;
 }
 
+=head2 document_exists( $name, [ $working ] )
+
+Returns a true value if a document named C<$named> exists in the collection.
+Useful for in-memory collections. If C<$working> is passed with a true
+value, search will be performed in the collection's working directory.
+
+=cut
+
+sub document_exists {
+	my ($self, $name, $working) = @_;
+
+	my $path = File::Spec->catfile($self->path, $name);
+	foreach ($self->isa('Giddy::Collection::InMemory') ? @{$self->_documents} : @{$self->_documents($working)}) {
+		my $f = $_->{document_dir} || $_->{document_file};
+		return 1 if $f eq $path;
+	}
+
+	return;
+}
+
 =head2 DOCUMENTS ITERATION
 
 =head3 count()
@@ -514,7 +525,7 @@ sub _spath {
 
 =head2 _documents( [ $working ] )
 
-Returns a list of all documents in the collection. If C<$working> is true,
+Returns an array-ref of all documents in the collection. If C<$working> is true,
 the list returned will be of all documents in the collection's working
 directory, otherwise - only cached documents will be returned.
 

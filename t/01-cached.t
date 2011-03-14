@@ -10,7 +10,7 @@ use Test::Git;
 
 has_git();
 
-plan tests => 65;
+plan tests => 69;
 
 my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -186,7 +186,7 @@ my $f12 = $root->find({ _name => 'one' });
 is($f12->count, 1, 'Found 1 document as expected when searching by _name => one');
 is($f12->next->{_name}, 'one', 'Found the correct document when searching by name => one');
 
-my $f13 = $root->find({ _name => qr/^t/, starring => { '$exists' => 0 } }, { verbose => 1 });
+my $f13 = $root->find({ _name => qr/^t/, starring => { '$exists' => 0 } });
 is($f13->count, 1, 'Found 1 document as expected when searching by _name => qr/^t/, starring => { $exists => 0 }');
 is($f13->first->{_name}, 'three', 'Found the correct document when searching by _name => qr/^t/, starring => { $exists => 0 }');
 
@@ -206,6 +206,15 @@ my $u3 = $root->update({ imdb_score => { '$exists' => 1 } }, { '$rename' => { ye
 is($u3->{n}, 2, 'u3 updated 2 documents as expected');
 
 $db->commit('updated some documents');
+
+# let's test query chaining
+my $f15 = $root->find->find({ starring => { '$exists' => 1 } })->find({ starring => { '$size' => 2 } });
+is($f15->count, 1, 'Got 1 result as expected for f15 (chain queries)');
+is_deeply($f15->first->{starring}, ['Jesse Eisenberg', 'Kristen Stewart'], 'Got the correct result for f15 (chain queries)');
+
+my $g5 = $root->find({ imdb_score => { '$exists' => 1 } })->grep('Emma Stone');
+is($g5->count, 1, 'Got 1 result as expected for g5 (chain queries)');
+is($g5->first->{_name}, 'four', 'Got the correct result for g5 (chain queries)');
 
 # let's remove some documents
 $root->remove('about');

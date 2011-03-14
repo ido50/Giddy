@@ -10,7 +10,7 @@ use Test::Git;
 
 has_git();
 
-plan tests => 63;
+plan tests => 67;
 
 my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -193,6 +193,15 @@ is($u2->{docs}->[0], 'about', 'u2 updated the correct document');
 
 my $u3 = $root->update({ imdb_score => { '$exists' => 1 } }, { '$rename' => { year => 'release_year' }, '$inc' => { imdb_score => -10 } }, { working => 1, multiple => 1 });
 is($u3->{n}, 2, 'u3 updated 2 documents as expected');
+
+# let's test query chaining
+my $f15 = $root->find({}, { working => 1 })->find({ starring => { '$exists' => 1 } }, { working => 1 })->find({ starring => { '$size' => 2 } }, { working => 1 });
+is($f15->count, 1, 'Got 1 result as expected for f15 (chain queries)');
+is($f15->first->{title}, 'Adventureland', 'Got the correct result for f15 (chain queries)');
+
+my $g5 = $root->find({ imdb_score => { '$exists' => 1 } }, { working => 1 })->grep('Emma Stone', { working => 1 });
+is($g5->count, 1, 'Got 1 result as expected for g5 (chain queries)');
+is($g5->first->{_name}, 'four', 'Got the correct result for g5 (chain queries)');
 
 # let's remove some documents
 $root->remove('about', { working => 1 });

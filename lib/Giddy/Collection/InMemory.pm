@@ -67,9 +67,13 @@ sub _set_documents {
 	my $docs = [];
 	my $loaded = {};
 	foreach (@$matched) {
-		my $path = $_->[0]->{document_dir} || $_->[0]->{document_dir};
-		push(@$docs, $_->[0]);
-		$loaded->{$path} = $_->[1] if $_->[1];
+		if (ref $_ eq 'ARRAY') {
+			my $path = $_->[0]->{document_file} || $_->[0]->{document_dir};
+			push(@$docs, $_->[0]);
+			$loaded->{$path} = $_->[1] if $_->[1];
+		} else {
+			push(@$docs, $_);
+		}
 	}
 
 	$self->_set_documents_ref($docs);
