@@ -9,11 +9,6 @@ use DateTime::Format::W3CDTF;
 use Path::Abstract qw/--no_0_093_warning/;
 use Try::Tiny;
 
-requires 'path';
-requires '_futil';
-requires '_database';
-requires '_spath';
-
 =head1 NAME
 
 Giddy::Role::DocumentMatcher - Provides query parsing and document matching for Giddy::Collection
@@ -37,12 +32,16 @@ sub _match_by_name {
 	# return all documents if we don't really have a query
 	$name eq '' && return $self->_documents;
 
-	my $docs = [];
-	foreach (@{$self->_documents}) {
-		my $doc_path = Path::Abstract->new($_->{document_dir} || $_->{document_file});
+	my $docs = Tie::IxHash->new;
+	foreach ($self->_documents->Keys) {
+		my $t = $self->_documents->FETCH($_);
+		my $doc_path = Path::Abstract->new($_);
 		my $doc_name = $doc_path->last;
-		push(@$docs, [$_]) if $self->_attribute_matches({ _name => $doc_name }, '_name', $name);
+		$docs->STORE($_ => $t)
+			if $self->_attribute_matches({ _name => $doc_name }, '_name', $name);
 	}
+
+	$docs->SortByKey;
 
 	return $docs;
 }
@@ -60,19 +59,18 @@ sub _match_by_query {
 	# return all documents if we don't really have a query
 	scalar keys %$query == 0 && $self->_documents;
 
-	my $docs = [];
-	foreach (@{$self->_documents}) {
-		# what is the type of this doc?
-		if ($_->{document_dir}) {
-			my $doc = $self->_load_document_dir($_->{document_dir});
-			push(@$docs, [$_, $doc]) if $self->_document_matches($doc, $query);
-		} else {
-			my $doc = $self->_load_document_file($_->{document_file});
-			push(@$docs, [$_, $doc]) if $self->_document_matches($doc, $query);
+	my $docs = Tie::IxHash->new;
+	my $loaded = {};
+	my $i = 0;
+	foreach ($self->_documents->Keys) {
+		my $doc = $self->_load_document($i++);
+		if ($self->_document_matches($doc, $query)) {
+			$docs->STORE($_ => $self->_documents->FETCH($_));
+			$loaded->{$_} = $doc;
 		}
 	}
 
-	return $docs;
+	return ($docs, $loaded);
 }
 
 =head2 _document_matches( \%doc, \%query )

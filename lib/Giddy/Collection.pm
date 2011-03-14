@@ -99,7 +99,7 @@ sub find {
 		_database => $self->_database,
 		_futil => $self->_futil,
 		_query => { find => $query, coll => $self, opts => $opts },
-		_documents => $self->_documents()
+		_documents => $self->_documents
 	);
 
 	# stage 2: are we matching by name? we do if query is a scalar
@@ -110,8 +110,11 @@ sub find {
 	}
 
 	# stage 3: are we querying by document attributes too?
-	$coll->_set_documents($coll->_match_by_query($query, $opts))
-		if scalar keys %$query;
+	if (scalar keys %$query) {
+		my ($docs, $loaded) = $coll->_match_by_query($query, $opts);
+		$coll->_set_documents($docs);
+		$coll->_set_loaded($loaded);
+	}
 
 	return $coll;
 }
@@ -173,21 +176,29 @@ sub grep {
 
 	push(@cmd, { cwd => File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath) }) if $self->_spath;
 
-	my @docs;
-	my $docs = {};
+	my $docs = Tie::IxHash->new;
 	foreach ($self->_database->_repo->run(@cmd)) {
 		if (m!/!) {
-			next if $docs->{$`};
-			push(@docs, [{ document_dir => File::Spec->catdir($self->path, $`) }]);
-			$docs->{$`} = 1;
+			my $path = File::Spec->catdir($self->path, $`);
+			# if this is an in-memory collection, we have to ignore
+			# documents in the actual filesystem collection but not here
+			next unless $self->_documents->EXISTS($path);
+			next if $docs->EXISTS($path);
+			$docs->STORE($path => 'dir');
 		} else {
-			next if $docs->{$_};
-			push(@docs, [{ document_file => File::Spec->catfile($self->path, $_) }]);
-			$docs->{$_} = 1;
+			my $path = File::Spec->catfile($self->path, $_);
+			# if this is an in-memory collection, we have to ignore
+			# documents in the actual filesystem collection but not here
+			next unless $self->_documents->EXISTS($path);
+			next if $docs->EXISTS($path);
+			$docs->STORE($path => 'file');
 		}
 	}
 
-	$coll->_set_documents(\@docs);
+	# sort the documents alphabetically by name
+	$docs->SortByKey;
+
+	$coll->_set_documents($docs);
 
 	return $coll;
 }
@@ -344,12 +355,12 @@ sub remove {
 	# i don't want to unnecessarily load all document just so i could
 	# delete them, so I'm gonna just iterate through the cursor's
 	# _documents array:
-	my @docs = $options->{multiple} ? @{$cursor->_documents || []} : $cursor->count ? ($cursor->_documents->[0]) : ();
-	foreach (@docs) {
-		if ($_->{document_file}) {
+	foreach ($options->{multiple} ? $cursor->_documents->Keys : $cursor->count ? ($cursor->_documents->Keys(0)) : ()) {
+		my $t = $cursor->_documents->FETCH($_);
+		if ($t eq 'file') {
 			# get the file's name and search path
-			my $spath = ($_->{document_file} =~ m!^/(.+)$!)[0];
-			my $name  = ($_->{document_file} =~ m!/([^/]+)$!)[0];
+			my $spath = (m!^/(.+)$!)[0];
+			my $name  = (m!/([^/]+)$!)[0];
 			
 			# remove the file
 			$self->_database->_repo->run('rm', '-f', $spath);
@@ -357,10 +368,10 @@ sub remove {
 			# add some info about this deletion
 			$deleted->{n} += 1;
 			push(@{$deleted->{docs}}, $name);
-		} elsif ($_->{document_dir}) {
+		} elsif ($t eq 'dir') {
 			# get the document's name and search path
-			my $spath = ($_->{document_dir} =~ m!^/(.+)$!)[0];
-			my $name  = ($_->{document_dir} =~ m!/([^/]+)$!)[0];
+			my $spath = (m!^/(.+)$!)[0];
+			my $name  = (m!/([^/]+)$!)[0];
 
 			# remove the document
 			$self->_database->_repo->run('rm', '-r', '-f', $spath);
@@ -383,7 +394,7 @@ Returns the number of documents in the collection.
 =cut
 
 sub count {
-	scalar @{shift->_documents};
+	shift->_documents->Length;
 }
 
 =head3 sort( [ $order ] )
@@ -440,13 +451,13 @@ sub sort {
 	if (scalar @$order == 1 && $order->[0] eq '_name') {
 		# if we're only sorting by name, there's no need to load
 		# the documents, so we can just go ahead and sort
-		
+		$self->_documents->OrderByKey;
+		$self->_documents->Reorder(reverse $self->_documents->Keys)
+			if $order->[1] < 0;
 	} else {
 		# we're gonna have to load the documents (if they're not
 		# already loaded).
-		my @docs;
-		foreach (@{$self->documents}) {
-			
+		# ------- NOT IMPLEMENTED YET --------------------------
 	}
 
 	return 1;
@@ -490,7 +501,7 @@ sub next {
 
 	return unless $self->has_next;
 
-	my $next = $self->_load_document($self->_documents->[$self->_loc]);
+	my $next = $self->_load_document($self->_loc);
 	$self->_inc_loc;
 	return $next;
 }
@@ -517,7 +528,7 @@ sub first {
 
 	return unless $self->count;
 
-	return $self->_load_document($self->_documents->[0]);
+	return $self->_load_document(0);
 }
 
 =head2 last()
@@ -532,7 +543,7 @@ sub last {
 
 	return unless $self->count;
 
-	return $self->_load_document($self->_documents->[$self->count - 1]);
+	return $self->_load_document($self->count - 1);
 }
 
 =head2 COLLECTION OPERATIONS
@@ -567,14 +578,14 @@ sub _spath {
 
 =head2 _documents()
 
-Returns an array-ref of all documents in the collection.
+Returns a sorted Tie::IxHash object of all documents in the collection.
 
 =cut
 
 sub _documents {
 	my $self = shift;
 
-	my $docs = [];
+	my $docs = Tie::IxHash->new;
 	foreach (sort $self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:')) {
 		my $full_path = File::Spec->catfile($self->path, $_);
 		my $search_path = ($full_path =~ m!^/(.+)$!)[0];
@@ -585,11 +596,11 @@ sub _documents {
 			# this is either a collection or a document
 			if (grep {/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:$search_path")) {
 				# great, this is a document directory, let's add it
-				push(@$docs, { document_dir => $full_path });
+				$docs->STORE($full_path => 'dir');
 			}
 		} elsif ($t eq 'blob') {
 			# cool, this is a document file
-			push(@$docs, { document_file => $full_path });
+			$docs->STORE($full_path => 'file');
 		}
 	}
 
@@ -608,44 +619,32 @@ sub _inc_loc {
 	$self->_set_loc($self->_loc + 1);
 }
 
-=head2 _load_document( \%res )
+=head2 _load_document( $index )
 
 Loads a document from the collection.
 
 =cut
 
 sub _load_document {
-	my ($self, $dochash) = @_;
+	my ($self, $index) = @_;
 
-	if ($dochash->{document_file}) {
-		if (exists $self->_loaded->{$dochash->{document_file}}) {
-			return $self->_loaded->{$dochash->{document_file}};
-		} else {
-			my $doc = $self->_query->{coll}->_load_document_file($dochash->{document_file});
-			$self->_add_loaded($dochash->{document_file}, $doc);
-			return $doc;
+	return unless $index >= 0 && $index < $self->count;
+
+	my $path = $self->_documents->Keys($index);
+	if (exists $self->_loaded->{$path}) {
+		return $self->_loaded->{$path};
+	} else {
+		my $t = $self->_documents->FETCH($path);
+		my $doc;
+		if ($t eq 'file') {
+			$doc = $self->_query->{coll}->_load_document_file($path);
+		} elsif ($t eq 'dir') {
+			$doc = $self->_query->{coll}->_load_document_dir($path, $self->_query->{opts}->{skip_binary});
 		}
-	} elsif ($dochash->{document_dir}) {
-		if (exists $self->_loaded->{$dochash->{document_dir}}) {
-			return $self->_loaded->{$dochash->{document_dir}};
-		} else {
-			my $doc = $self->_query->{coll}->_load_document_dir($dochash->{document_dir}, $self->_query->{opts}->{skip_binary});
-			$self->_add_loaded($dochash->{document_dir}, $doc);
-			return $doc;
-		}
+		croak "Failed to load document $path." unless $doc;
+		$self->_loaded->{$path} = $doc;
+		return $doc;
 	}
-}
-
-=head2 _add_loaded( $path, \%doc )
-
-Adds the loaded document to the cursor
-
-=cut
-
-sub _add_loaded {
-	my ($self, $path, $doc) = @_;
-
-	$self->_loaded->{$path} = $doc;
 }
 
 =head1 AUTHOR

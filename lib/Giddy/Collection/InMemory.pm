@@ -32,53 +32,11 @@ Not to be used externally.
 
 =cut
 
-has '_documents' => (is => 'ro', isa => 'ArrayRef[HashRef]', default => sub { [] }, writer => '_set_documents_ref');
+has '_documents' => (is => 'ro', isa => 'Tie::IxHash', default => sub { Tie::IxHash->new }, writer => '_set_documents');
 
 has '_loaded' => (is => 'ro', isa => 'HashRef[HashRef]', default => sub { {} }, writer => '_set_loaded');
 
 has '_query' => (is => 'ro', isa => 'HashRef', required => 1);
-
-=head1 METHODS
-
-=head2 count()
-
-Returns the number of documents found by the query and thus residing in
-this in-memory collection.
-
-=cut
-
-sub count {
-	my $self = shift;
-	my $docs = $self->_documents;
-	return scalar @$docs;
-}
-
-=head1 INTERNAL METHODS
-
-The following methods are only to be used internally.
-
-=head2 _set_documents( @docs )
-
-=cut
-
-sub _set_documents {
-	my ($self, $matched) = @_;
-
-	my $docs = [];
-	my $loaded = {};
-	foreach (@$matched) {
-		if (ref $_ eq 'ARRAY') {
-			my $path = $_->[0]->{document_file} || $_->[0]->{document_dir};
-			push(@$docs, $_->[0]);
-			$loaded->{$path} = $_->[1] if $_->[1];
-		} else {
-			push(@$docs, $_);
-		}
-	}
-
-	$self->_set_documents_ref($docs);
-	$self->_set_loaded($loaded);
-}
 
 =head1 AUTHOR
 

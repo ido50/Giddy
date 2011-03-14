@@ -7,10 +7,7 @@ use Carp;
 use Try::Tiny;
 use YAML::Any;
 
-requires 'path';
-requires '_futil';
 requires '_database';
-requires '_spath';
 
 =head1 NAME
 

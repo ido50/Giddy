@@ -5,11 +5,6 @@ use namespace::autoclean;
 
 use Carp;
 
-requires 'path';
-requires '_futil';
-requires '_database';
-requires '_spath';
-
 =head1 NAME
 
 Giddy::Role::DocumentUpdater - Provides document updating for Giddy::Collection
