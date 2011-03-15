@@ -41,7 +41,7 @@ sub _load_document_file {
 	}
 
 	return try {
-		my $doc = Load($yaml);
+		my $doc = Load("---\n$yaml");
 		$doc->{_body} = $body;
 		$doc->{_name} = ($path =~ m!/([^/]+)$!)[0];
 		return $doc;

@@ -457,10 +457,64 @@ sub sort {
 	} else {
 		# we're gonna have to load the documents (if they're not
 		# already loaded).
-		# ------- NOT IMPLEMENTED YET --------------------------
+		$self->_documents->Reorder(sort {
+			# load the documents
+			my $doc_a = $self->_load_document($self->_documents->Indices($a));
+			my $doc_b = $self->_load_document($self->_documents->Indices($b));
+			
+			# start comparing according to $order
+			foreach my $attr ($order->Keys) {
+				my $dir = $order->FETCH($attr);
+				if (defined $doc_a->{$attr} && !ref $doc_a->{$attr} && defined $doc_b->{$attr} && !ref $doc_b->{$attr}) {
+					# are we comparing numerically or alphabetically?
+					if ($doc_a->{$attr} =~ m/^\d+(\.\d+)?$/ && $doc_b->{$attr} =~ m/^\d+(\.\d+)?$/) {
+						# numerically
+						if ($dir > 0) {
+							# when $dir is positive, we want $a to be larger than $b
+							return 1 if $doc_a->{$attr} > $doc_b->{$attr};
+							return -1 if $doc_a->{$attr} < $doc_b->{$attr};
+						} elsif ($dir < 0) {
+							# when $dir is negative, we want $a to be smaller than $b
+							return -1 if $doc_a->{$attr} > $doc_b->{$attr};
+							return 1 if $doc_a->{$attr} < $doc_b->{$attr};
+						}
+					} else {
+						# alphabetically
+						if ($dir > 0) {
+							# when $dir is positive, we want $a to be larger than $b
+							return 1 if $doc_a->{$attr} gt $doc_b->{$attr};
+							return -1 if $doc_a->{$attr} lt $doc_b->{$attr};
+						} elsif ($dir < 0) {
+							# when $dir is negative, we want $a to be smaller than $b
+							return -1 if $doc_a->{$attr} gt $doc_b->{$attr};
+							return 1 if $doc_a->{$attr} lt $doc_b->{$attr};
+						}
+					}
+				} else {
+					# documents cannot be compared for this attribute
+					# we want documents that have the attribute appear
+					# earlier in the collection, so let's find out if
+					# one of the documents has the attribute
+					return -1 if defined $doc_a->{$attr} && !defined $doc_b->{$attr};
+					return 1 if defined $doc_b->{$attr} && !defined $doc_a->{$attr};
+					
+					# if we're here, either both documents have the
+					# attribute but it's non comparable (since it's a
+					# reference) or both documents don't have that
+					# attribute at all. in both cases, we consider them
+					# to be equal when comparing these attributes,
+					# so we don't return anything and just continue to
+					# the next attribute to sort according to (if any)
+				}
+			}
+
+			# if we've reached this point, the documents compare entirely
+			# so we need to return zero
+			return 0;
+		} $self->_documents->Keys);
 	}
 
-	return 1;
+	return $self;
 }
 
 =head3 all()
