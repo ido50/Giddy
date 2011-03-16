@@ -12,9 +12,9 @@ use Data::Dumper;
 
 has_git();
 
-plan tests => 74;
+plan tests => 77;
 
-my $tmpdir = tempdir();#CLEANUP => 1);
+my $tmpdir = tempdir(CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
 
 # create a new Giddy object
@@ -199,9 +199,14 @@ my $f14 = $root->find({ _name => { '$ne' => 'two' } });
 is($f14->count, 5, 'Found 5 documents as expected when searching by _name => { $ne => two }');
 
 # let's sort some stuff
-my $f15 = $root->find->sort([ imdb_score => -1, name => 1 ]);
-use Data::Dumper;
-print STDERR Dumper($f15->_documents);
+my $f15 = $root->find->sort([ 'imdb_score' => -1, '_name' => 1 ]);
+is_deeply([$f15->_documents->Keys], ['/four', '/two', '/about', '/five', '/one', '/three'], 'Documents properly sorted in f15');
+
+my $f16 = $root->find->sort([ 'imdb_score' => 1, '_name' => -1 ]);
+is_deeply([$f16->_documents->Keys], ['/two', '/four', '/three', '/one', '/five', '/about'], 'Documents properly sorted in f16');
+
+my $f17 = $root->find->sort(Tie::IxHash->new('year' => -1, 'title' => 1));
+is_deeply([$f17->_documents->Keys], ['/two', '/four', '/five', '/about', '/one', '/three'], 'Documents properly sorted in f17');
 
 # try to update a document
 my $u1 = $root->update({ starring => 'Jesse Eisenberg' }, { '$pull' => { starring => 'Jesse Eisenberg' }, '$push' => { starring => 'Jesse Fakerberg' } }, { multiple => 1 });
@@ -218,9 +223,9 @@ is($u3->{n}, 2, 'u3 updated 2 documents as expected');
 $db->commit('updated some documents');
 
 # let's test query chaining
-my $f16 = $root->find->find({ starring => { '$exists' => 1 } })->find({ starring => { '$size' => 2 } });
-is($f16->count, 1, 'Got 1 result as expected for f16 (chain queries)');
-is_deeply($f16->first->{starring}, ['Jesse Eisenberg', 'Kristen Stewart'], 'Got the correct result for f16 (chain queries)');
+my $f18 = $root->find->find({ starring => { '$exists' => 1 } })->find({ starring => { '$size' => 2 } });
+is($f18->count, 1, 'Got 1 result as expected for f18 (chain queries)');
+is_deeply($f18->first->{starring}, ['Jesse Eisenberg', 'Kristen Stewart'], 'Got the correct result for f18 (chain queries)');
 
 my $g5 = $root->find({ imdb_score => { '$exists' => 1 } })->grep('Emma Stone');
 is($g5->count, 1, 'Got 1 result as expected for g5 (chain queries)');

@@ -1,0 +1,291 @@
+=head1 NAME
+
+Giddy::Manual - Manual for the Giddy versioned NoSQL database
+
+=head1 PROJECT STATUS
+
+This project is currently in alpha status, released for testing purposes
+only. Do not use it for production yet!
+
+=head1 FAQ
+
+=head2 WHAT IS GIDDY?
+
+Giddy is a schema-less (as in NoSQL), versioned database system built on
+top of Git. A database in Giddy is simply a Git repository, providing the
+database with automatic, comprehensive versioning and distributive capabilities.
+
+As opposed to most modern database systems, Giddy aims to be human editable.
+One can create/edit/delete database entries with nothing but a text editor
+and some simple git commands (YAML has been chosen as the serialization
+format since YAML is well suited as a human editable format; however, JSON
+support is planned). This module provides an API for usage by Perl applications.
+
+Main database features (not all features implemented yet):
+
+=over
+
+=item * Human editable
+
+=item * Multiple version concurrency
+
+=item * Concurrent transactions 
+
+=item * Distributed peers
+
+=item * Disconnected operation
+
+=item * Other fancy words
+
+=back
+
+Giddy was inspired by the similar, Scala-based L<gimd|https://code.google.com/p/gimd/>
+project; the Ruby-based L<toto|http://cloudhead.io/toto> blogging
+platform; and L<MongoDB>. While the database's structure is very similar
+to that of gimd and toto, its API's syntax was written to closely resemble that
+of MongoDB.
+
+=head2 WHAT ARE GIDDY'S USE CASES?
+
+Giddy is not meant to be a general-purpose database system such as MySQL, Oracle,
+MongoDB or CouchDB, and thus can't replace them for most use cases. Giddy
+is designed for one specific use case: providing a storage backend for
+document-based websites and web applications. Note that the usage of the
+term "document" in this context isn't the same as in "document-oriented
+database" from databases such as MongoDB. "Document" in Giddy's context
+is just that - a document, such as text articles, HTML pages, etc. That
+said, this distinction is merely theoretical, as Giddy documents are
+mostly (but not always) not different than MongoDB/CouchDB documents.
+
+So, while you I<could> use Giddy for a lot of purposes, you probably I<shouldn't>.
+
+=head2 IS IT FAST?
+
+Probably not. Giddy cannot compete with databases like MySQL or MongoDB.
+While the underlying Git system is known to be fast at what it does,
+the YAML serialization employed by Giddy is time consuming. Giddy aims to
+be I<fast enough> for the use case described above. Updating documents
+(unless performed by direct file editing) is also time consuming, as Giddy
+can't update in-place like MongoDB does.
+
+=head2 IS IT ACID COMPLIANT?
+
+No. While Giddy is atomic (all operations are performed by a single commit,
+so either all of them happen, or none at all), isolated (other operations
+cannot access data modified by an in-progress commit). Giddy is definitely
+not consistent, as no consistency checks or data validations are performed
+(this stems from the fact that Giddy is a schema-less database, thus Giddy
+will never be consistent). As for durability, I'm actually not quite sure.
+In Git, once a commit has been performed, it will not go away. That is,
+not by accident at least. Commits can be completely cancelled in Git, so
+therefore I'm not really sure if Giddy complies with this requirement. I'm
+not really a database system designer nor am I a Git-guru. I look at things
+much more pragmatically than technically.
+
+=head2 IS IT RELATIONAL?
+
+No. Giddy is a NoSQL, schema-less database system, and thus is not relational.
+That said, Giddy uses a hierarchical model making it at least I<somewhat>
+relational. Read L</"DATABASE STRUCTURE"> for more information.
+
+=head2 WHAT PLATFORMS ARE SUPPORTED?
+
+Giddy aims to be supported under any Perl-supported system, be it Unix-like
+systems, Windows systems, Mac systems, etc. However, Giddy is currently
+developed and tested only under Linux and probably won't work on non-Unix-like
+systems yet.
+
+=head2 WHAT KIND OF DATA CAN BE STORED IN A GIDDY DATABASE?
+
+Short answer: anything.
+Long answer: Giddy takes a simple approach to data handling. Anything
+that is purely textual (including numbers) is stored textually. Anything
+that can be serialized (such as Perl data structures) should be serialized
+and stored textually as well. Anything binary or that can't be serialized
+should be stored as-is in individual files. For further information, move
+on to L</"DATABASE STRUCTURE">.
+
+=head2 CAN GIDDY WORK WITH BARE GIT REPOSITORIES?
+
+Yes and no. No, because in order to actually use the database (that is,
+create/edit/delete collections/documents) the Git repository must have
+a working directory. Thus, the L<Giddy> module must work with a database's
+working directory. Yes, because you can have a bare clone of the database
+(which may serve as the database's "origin"), but you cannot manipulate it
+directly. Always remeber that Giddy databases are plain Git repositories,
+nothing more. Everything you know from Git is true in Giddy.
+
+=head1 DATABASE STRUCTURE
+
+As previousely stated, a Giddy database is a Git repository. Like MongoDB,
+entries (documents) are stored inside collections (which are analogous
+to SQL tables), but as opposed to MongoDB, collections are nestable
+(infinitely). As a matter of fact, the repository's root folder is the
+database's root collection. This collection can contain as many sub-collections
+as you wish (or, more correctly, as your file system supports). These
+sub-collections can have as many sub-collections of their own, etc. In other
+words, a Giddy database is hierarchical. If it isn't clear enough, a collection
+in Giddy is a directory in the file system.
+
+Not only that, documents can have sub-collections of their own. This
+feature is intended to provide at least some relational capabilities to
+the database, since documents stored in a collection that is a child of
+a document can be thought of as belonging to that parent document. In other
+words, the collection can be considered an attribute of the parent document,
+containing a list of child documents. It's not perfect, but it's something.
+
+Documents in a Giddy collection are stored in two ways (which can be
+seemlessly combined, i.e. a collection can have documents of both kind):
+
+=over
+
+=item 1. The simple way (suited for articles and HTML pages): A file
+document, consisting of one text file. This file has two sections, separated
+by two newline characters. The top section is YAML text holding the document's
+attributes. The bottom section (i.e. after the double newlines) is the
+article's text (or the page's HTML), which is actually called the
+document's '_body' attribute. If the document has no attributes other
+than its body, then it won't have a YAML section, just the text section,
+without the double newline characters before it. This is very similar to
+HTTP requests/responses. This type of document, however, is limited, since
+it cannot have binary attributes and cannot have child collections; it is
+mostly provided for its convenience (very human editable) and since it 
+
+=item 2. The normal way: A directory-based document, holding a YAML file
+called 'attributes.yaml' (required) which holds all the document's textual/serializable
+attributes, and zero or more binary files. These files are also considered
+attributes of the document. Quite frankly, Giddy will not care if the files
+are in fact binary. They can be JSON or plain text files for all it cares, but as
+long as they are separate than attributes.yaml, they will be considered
+binary attributes. The document directory can also have sub-directories,
+or more correctly sub-collections. These hold child directories of the
+document. You can think of a document's sub-collection as another attribute
+of the document.
+
+Documents in Giddy don't have an ID attribute. Every document has a '_name'
+attribute which is simply the document's file name (or directory name in
+case it's a directory-based document). This file name is unique in the
+collection, and thus can serve as the documents ID.
+
+=back
+
+I aim to add support for directories which don't contain documents at all,
+but only "static files", which will make it suitable for binary file storage.
+This is not implemented yet though.
+
+How does Giddy differentiate between collection directories and document
+directories? Simple, if a directory has an 'attributes.yaml' file - then
+it is a document. If it doesn't, then it's a collection.
+
+=head2 EXAMPLE STRUCTURE
+
+Let's take a look at an example of a simple Giddy database:
+
+	/var/database/test_db/			<-- The database, also its root collection
+		index.html				<-- A document file (implies '_body' attribute holds HTML data)
+		data.json				<-- A document file (implies '_body' attribute holds JSON text)
+		about/					<-- A document directory
+			attributes.yaml				<-- The document's textual/serializable attributes
+			image.png				<-- A binary attribute
+			stuff.json				<-- Another binary attribute, though actually textual
+		forum/					<-- A collection
+			general_topics/				<-- A collection
+				giddy_is_cool/				<-- A document directory
+					attributes.yaml				<-- The document's attributes
+					comments/				<-- A collection
+						one.html				<-- A document file
+						two.html				<-- A document file
+				giddy_is_dumb/				<-- A document directory
+					attributes.yaml				<-- The document's attributes
+			perl_topics/				<-- A collection
+				having_some_unicode_problems/		<-- A document directory
+					attributes.yaml				<-- The document's attributes
+
+The structure should be pretty self-explanatory. You can see that this
+database basically represents an entire website. This is Giddy's main
+purpose and its strength. Imagine having the power of a dynamic website
+with the convenience of being able to maintain it as if it were completely
+static.
+
+=head1 WORKING WITH THE GIDDY MODULE
+
+As previously mentioned, Giddy's syntax was modeled after L<MongoDB>'s
+syntax. Apart from a few changes, they are quite the same.
+
+=head2 GETTING A NEW INSTANCE OF THE GIDDY MODULE
+
+To start using Giddy, all you need to do is:
+
+	my $giddy = Giddy->new;
+
+No parameters or attributes are required.
+
+=head2 CREATING A DATABASE / CONNECTING TO AN EXISTING DATABASE
+
+As in MongoDB, Giddy doesn't care if a database already exists or not. The
+syntax for creating/connecting to a database is the same:
+
+	my $db = $giddy->get_database('/path/to/database');
+
+If the database doesn't exist yet, Giddy will attempt to create it and
+initialize it as a Git repository.
+
+Once the database has been created, it already has one collection, the
+root collection, which actually is C</path/to/database>.
+
+=head2 CREATING A COLLECTION / GETTING AN EXISTING COLLECTION
+
+Just like above, the syntax for creating/getting a collection is the same:
+
+	my $coll = $db->get_collection('/collection'); # gets the collection /path/to/database/collection
+	my $root = $db->get_collection('/');	# get the root collection /path/to/database
+						# (also simply $db->get_collection() with no parameters)
+
+=head2 CREATING DOCUMENTS
+
+Creating documents is easy. To insert one document, all you need to do is:
+
+	$coll->insert( $name, \%attributes );
+
+For example:
+
+	$coll->insert( 'some_data', { numbers => [1, 2, 3], text => "What's up?", regex => qr/^\d+$/ } );
+
+Will create the directory /path/to/database/collection/some_data/ with
+the file 'attributes.yaml' which will look something like:
+
+	text:		What's up?
+	regex:		!!perl/regexp (?-xism:^\d+$)
+	numbers:
+		- 1
+		- 2
+		- 3
+
+The reason this syntax is slightly different than MongoDB's C<insert()>
+method is that you have to pass a filename, Giddy cannot generate random
+file names for you like MongoDB generates an '_id' method if you don't
+provide one.
+
+Creating document files is similar, all you need to do is provide a '_body'
+attribute. If the document you're inserting has a '_body' attribute, then
+it will I<always> be saved as a document file:
+
+	$root->insert( 'index.html', { author => "Ido Perlmuter", date => "2011-03-15", _body => "<html><title>Giddy Sucks!</title></html>" } )
+
+Will create the file /path/to/database/index.html with the following contents:
+
+	author:		Ido Perlmuter
+	date:		2011-03-15
+	
+	<html><title>Giddy Sucks!</title></html>
+
+Like MongoDB, you can batch insert documents, but the syntax is slightly
+different: you have to provide an even-number array-ref, like so:
+
+	$coll->batch_insert([ 'index.html' => $index_attrs, 'about.html' => $about_attrs ]);
+
+=head2 UPDATING DOCUMENTS
+
+Giddy implements MongoDB's update strategy almost completely. Apart from
+not yet supporting MongoDB's dot notation (used to update sub-attributes),
+almost all MongoDB's update operations are supported.

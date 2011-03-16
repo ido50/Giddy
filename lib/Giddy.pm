@@ -1,6 +1,6 @@
 package Giddy;
 
-# ABSTRACT: Schemaless, versioned document database based on Git.
+# ABSTRACT: Schema-less, versioned media/document database based on Git.
 
 use Any::Moose;
 use namespace::autoclean;
@@ -12,11 +12,47 @@ use Giddy::Database;
 
 =head1 NAME
 
-Giddy - Schemaless, versioned media/document database based on Git.
+Giddy - Schema-less, versioned media/document database based on Git.
 
 =head1 SYNOPSIS
 
 =head1 DESCRIPTION
+
+WARNING: THIS IS ALPHA SOFTWARE, RELEASED FOR TESTING PURPOSES ONLY. DO
+NOT USE IT ON A PRODUCTION ENVIRONMENT YET. IT'S INCOMPLETE, BUG-RIDDEN,
+AND WILL RUN OVER YOUR CAT.
+
+Giddy is a schema-less (as in NoSQL), versioned database system built on
+top of Git. A database in Giddy is simply a Git repository, providing the
+database with automatic, comprehensive versioning and distributive capabilities.
+
+As opposed to most modern database systems, Giddy aims to be human editable.
+One can create/edit/delete database entries with nothing but a text editor
+and some simple git commands (YAML has been chosen as the serialization
+format since YAML is well suited as a human editable format; however, JSON
+support is planned). This module provides an API for usage by Perl applications.
+
+Main database features (not all features implemented yet):
+
+=over
+
+=item * Human editable
+
+=item * Multiple version concurrency
+
+=item * Concurrent transactions 
+
+=item * Distributed peers
+
+=item * Disconnected operation
+
+=item * Other fancy words
+
+=back
+
+STOP: This document (and all other module documentation provided with the
+distribution) are for reference purposes only. Please read L<Giddy::Manual>
+before using Giddy to learn about the database system and its usage.
 
 =head1 ATTRIBUTES
 

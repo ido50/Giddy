@@ -445,8 +445,13 @@ sub sort {
 
 	$order ||= [ '_name' => 1 ];
 
-	$order = Tie::IxHash->new($order)
+	$order = Tie::IxHash->new(@$order)
 		unless blessed $order && $order->isa('Tie::IxHash');
+
+	# if $order doesn't have sorting by _name, add it explicitly to
+	# the end of it as a convention
+	$order->Push('_name' => 1)
+		unless defined $order->Indices('_name');
 
 	if ($order->Length == 1 && $order->Keys(0) eq '_name') {
 		# if we're only sorting by name, there's no need to load
@@ -513,6 +518,8 @@ sub sort {
 			return 0;
 		} $self->_documents->Keys);
 	}
+
+	$self->rewind;
 
 	return $self;
 }
