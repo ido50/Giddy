@@ -6,7 +6,7 @@ use namespace::autoclean;
 use Carp;
 use Fcntl qw/:flock/;
 use File::Path qw/make_path/;
-use YAML::Any;
+use YAML::XS;
 
 requires 'path';
 requires '_database';
@@ -67,7 +67,10 @@ sub _store_document {
 sub _write_file {
 	my ($self, $fpath, $content, $mode) = @_;
 
-	open(FILE, '>:utf8', $fpath)
+	# there's no need to open the output file in binary :utf-8 mode,
+	# as the YAML Dump() function returns UTF-8 encoded data (so it seems)
+
+	open(FILE, '>', $fpath)
 		|| croak "Can't open file $fpath for writing: $!";
 	flock(FILE, LOCK_EX);
 	print FILE $content;

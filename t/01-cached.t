@@ -2,19 +2,19 @@
 
 use warnings;
 use strict;
+use utf8;
+
 use File::Temp qw/tempdir/;
 use File::Spec;
 use Giddy;
 use Test::More;
 use Test::Git;
 
-use Data::Dumper;
-
 has_git();
 
-plan tests => 77;
+plan tests => 80;
 
-my $tmpdir = tempdir(CLEANUP => 1);
+my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
 
 # create a new Giddy object
@@ -114,11 +114,16 @@ $root->insert('one', { subject => 'Lorem Ipsum', text => 'Dolor Sit Amet', regex
 $root->insert('two', { title => 'Adventureland', starring => ['Jesse Eisenberg', 'Kristen Stewart'], year => 2009, imdb_score => 7.1 });
 $root->insert('three', { subject => '2009 Movies', text => "I don't know, there were many." });
 $root->insert('four', { title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8 });
-$root->insert('five', { title => 'Superbad', starring => ['Jonah Hill', 'Michael Cera', 'Emma Stone'], year => 2007 });
+$root->insert('five', { title => 'Superbad', starring => ['Jonah Hill', 'Michael Cera', 'Emma Stone'], year => 2007, utf8 => 'עידו פרלמוטר' });
 
 $db->commit('created some documents');
 
 # let's perform different find queries
+my $f0 = $root->find_one({ utf8 => { '$exists' => 1 } });
+ok($f0, 'Found a document that has the utf8 attribute');
+is($f0->{_name}, 'five', 'Found the correct document with a utf8 attribute');
+is($f0->{utf8}, 'עידו פרלמוטר', 'UTF-8 text properly decoded');
+
 my $f1 = $root->find({ imdb_score => { '$exists' => 1 } });
 my @r1 = $f1->all;
 is($f1->count, 2, 'Got 2 results as expected when searching by imdb_score => { $exists => 1 }');

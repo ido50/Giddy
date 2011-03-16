@@ -4,8 +4,9 @@ use Any::Moose 'Role';
 use namespace::autoclean;
 
 use Carp;
+use Encode;
 use Try::Tiny;
-use YAML::Any;
+use YAML::XS;
 
 requires '_database';
 
