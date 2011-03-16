@@ -7,7 +7,6 @@ use namespace::autoclean;
 
 use Carp;
 use File::Spec;
-use File::Util;
 use Giddy::Database;
 
 =head1 NAME
@@ -46,6 +45,8 @@ Main database features (not all features implemented yet):
 
 =item * Disconnected operation
 
+=item * Consistent UTF-8 encoding
+
 =item * Other fancy words
 
 =back
@@ -55,14 +56,6 @@ distribution) are for reference purposes only. Please read L<Giddy::Manual>
 before using Giddy to learn about the database system and its usage.
 
 =head1 ATTRIBUTES
-
-=head2 _futil
-
-A L<File::Util> object to be used by the module. Automatically created.
-
-=cut
-
-has '_futil' => (is => 'ro', isa => 'File::Util', default => sub { File::Util->new });
 
 =head1 CLASS METHODS
 
@@ -86,10 +79,10 @@ sub get_database {
 	# is this an existing database or a new one?
 	if (-d $path && -d File::Spec->catdir($path, '.git')) {
 		# existing
-		return Giddy::Database->new(_repo => Git::Repository->new(work_tree => $path), _futil => $self->_futil);
+		return Giddy::Database->new(_repo => Git::Repository->new(work_tree => $path));
 	} else {
 		# new one
-		return Giddy::Database->new(_repo => Git::Repository->create(init => $path), _futil => $self->_futil);
+		return Giddy::Database->new(_repo => Git::Repository->create(init => $path));
 	}
 }
 

@@ -35,6 +35,8 @@ Main database features (not all features implemented yet):
 
 =item * Disconnected operation
 
+=item * Consistent UTF-8 encoding
+
 =item * Other fancy words
 
 =back
@@ -104,6 +106,15 @@ that can be serialized (such as Perl data structures) should be serialized
 and stored textually as well. Anything binary or that can't be serialized
 should be stored as-is in individual files. For further information, move
 on to L</"DATABASE STRUCTURE">.
+
+=head2 WHICH CHARACTER SETS AND ENCODINGS ARE SUPPORTED?
+
+Giddy only supports UTF-8 and nothing else! All files created by Giddy
+are UTF-8 encoded. All data I<written> to these files is automatically
+UTF-8 encoded, wile all data I<read> from these files is automatically
+UTF-8 decoded. When creating/manilpulating documents by hand (as said,
+human editing is supported), one must be careful to create the files in
+UTF-8.
 
 =head2 CAN GIDDY WORK WITH BARE GIT REPOSITORIES?
 
@@ -284,8 +295,11 @@ different: you have to provide an even-number array-ref, like so:
 
 	$coll->batch_insert([ 'index.html' => $index_attrs, 'about.html' => $about_attrs ]);
 
+As previousely mentioned, data inserted is automatically UTF-8 decoded,
+so make sure your data actually is UTF-8.
+
 =head2 UPDATING DOCUMENTS
 
 Giddy implements MongoDB's update strategy almost completely. Apart from
-not yet supporting MongoDB's dot notation (used to update sub-attributes),
-almost all MongoDB's update operations are supported.
+not yet supporting MongoDB's dot notation used to update sub-attributes
+(i.e. nested fields), almost all MongoDB's update operations are supported.

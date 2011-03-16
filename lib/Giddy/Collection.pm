@@ -17,8 +17,6 @@ has 'path' => (is => 'ro', isa => 'Str', default => '/');
 
 has '_database' => (is => 'ro', isa => 'Giddy::Database', required => 1);
 
-has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
-
 has '_loc' => (is => 'ro', isa => 'Int', default => 0, writer => '_set_loc');
 
 with	'Giddy::Role::DocumentLoader',
@@ -44,10 +42,6 @@ directory of the database.
 =head2 _database
 
 The L<Giddy::Database> object the collection belongs to. Required.
-
-=head2 _futil
-
-A L<File::Util> object used by the module. Required.
 
 =head2 _loc
 
@@ -97,7 +91,6 @@ sub find {
 	my $coll = Giddy::Collection::InMemory->new(
 		path => $self->path,
 		_database => $self->_database,
-		_futil => $self->_futil,
 		_query => { find => $query, coll => $self, opts => $opts },
 		_documents => $self->_documents
 	);
@@ -159,7 +152,6 @@ sub grep {
 	my $coll = Giddy::Collection::InMemory->new(
 		path => $self->path,
 		_database => $self->_database,
-		_futil => $self->_futil,
 		_query => { grep => $query, coll => $self, opts => $opts }
 	);
 

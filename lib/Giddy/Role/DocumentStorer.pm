@@ -4,10 +4,11 @@ use Any::Moose 'Role';
 use namespace::autoclean;
 
 use Carp;
+use Fcntl qw/:flock/;
+use File::Path qw/make_path/;
 use YAML::Any;
 
 requires 'path';
-requires '_futil';
 requires '_database';
 requires '_spath';
 
@@ -43,7 +44,7 @@ sub _store_document {
 		$content =~ s/^---\n//;
 
 		# create the document
-		$self->_futil->write_file(file => $fpath, content => $content, bitmask => 0664);
+		$self->_write_file($fpath, $content, 0664);
 
 		# mark the document for staging
 		$self->_database->mark(File::Spec->catfile($self->path, $filename));
@@ -51,16 +52,28 @@ sub _store_document {
 		my $fpath = File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath, $filename);
 
 		# create the document directory
-		$self->_futil->make_dir($fpath, 0775, '--if-not-exists');
+		make_path($fpath, { mode => 0755 });
 
 		# create the attributes file
 		my $yaml = Dump($attrs);
 		$yaml =~ s/^---\n//;
-		$self->_futil->write_file('file' => File::Spec->catfile($fpath, 'attributes.yaml'), 'content' => $yaml, 'bitmask' => 0664);
+		$self->_write_file(File::Spec->catfile($fpath, 'attributes.yaml'), $yaml, 0664);
 
 		# mark the document for staging
 		$self->_database->mark(File::Spec->catdir($self->path, $filename));
 	}
+}
+
+sub _write_file {
+	my ($self, $fpath, $content, $mode) = @_;
+
+	open(FILE, '>:utf8', $fpath)
+		|| croak "Can't open file $fpath for writing: $!";
+	flock(FILE, LOCK_EX);
+	print FILE $content;
+	close(FILE)
+		|| carp "Error closing file $fpath: $!";
+	chmod($mode, $fpath);
 }
 
 =head1 AUTHOR

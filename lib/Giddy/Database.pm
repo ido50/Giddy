@@ -6,6 +6,7 @@ use Any::Moose;
 use namespace::autoclean;
 
 use Carp;
+use File::Path qw/make_path/;
 use Git::Repository;
 use Git::Repository::Log::Iterator;
 use Giddy::Collection;
@@ -25,10 +26,6 @@ Giddy::Database - A Giddy database.
 A L<Git::Repository> object, tied to the git repository of the Giddy database.
 This is a required attribute.
 
-=head2 _futil
-
-A L<File::Util> object to be used by the module. Required.
-
 =head2 _marked
 
 A list of paths to add to the next commit job. Automatically created.
@@ -36,8 +33,6 @@ A list of paths to add to the next commit job. Automatically created.
 =cut
 
 has '_repo' => (is => 'ro', isa => 'Git::Repository', required => 1);
-
-has '_futil' => (is => 'ro', isa => 'File::Util', required => 1);
 
 has '_marked' => (is => 'ro', isa => 'ArrayRef[Str]', default => sub { [] }, writer => '_set_marked');
 
@@ -65,10 +60,10 @@ sub get_collection {
 		}
 
 		# create the collection directory (unless it already exists)
-		$self->_futil->make_dir(File::Spec->catdir($self->_repo->work_tree, $spath), 0775, '--if-not-exists');
+		make_path(File::Spec->catdir($self->_repo->work_tree, $spath), { mode => 0775 });
 	}
 
-	return Giddy::Collection->new(_database => $self, path => $path, _futil => $self->_futil);
+	return Giddy::Collection->new(_database => $self, path => $path);
 }
 
 =head2 commit( [$commit_msg] )
