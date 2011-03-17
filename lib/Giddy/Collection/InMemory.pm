@@ -53,7 +53,17 @@ has '_loaded' => (is => 'ro', isa => 'HashRef[HashRef]', default => sub { {} }, 
 
 has '_query' => (is => 'ro', isa => 'HashRef', required => 1);
 
-override 'drop' => sub { 1 };
+=head1 METHODS
+
+Just the same as in L<Giddy::Collection>, of course, except for:
+
+=head2 drop()
+
+Doesn't do anything. Really.
+
+=cut
+
+sub drop { 1 }
 
 =head1 AUTHOR
 
