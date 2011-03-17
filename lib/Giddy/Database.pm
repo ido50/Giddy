@@ -21,12 +21,17 @@ Giddy::Database - A Giddy database.
 
 =head1 DESCRIPTION
 
+This class represents Giddy databases. Aside from providing you with the ability
+to create and get collections from the database, it provides methods which are
+global to the database, like commit changes, undoing changes, etc.
+
 =head1 ATTRIBUTES
 
 =head2 _repo
 
 A L<Git::Repository> object, tied to the git repository of the Giddy database.
-This is a required attribute.
+This is a required attribute. Not meant to be used externally, but knock yourself
+out if you feel the need to run specific Git commands.
 
 =head2 _marked
 
@@ -40,7 +45,12 @@ has '_marked' => (is => 'ro', isa => 'ArrayRef[Str]', default => sub { [] }, wri
 
 =head1 OBJECT METHODS
 
-=head2 get_collection( $path_to_coll )
+=head2 get_collection( [ $path_to_coll ] )
+
+Returns a L<Giddy::Collection> object tied to a certain directory in the database.
+If a path is not provided, the root collection ('/') will be used. If the collection
+does not exist, Giddy will attempt to create it. The path provided has to be relative
+to the database's full path, but with a starting slash.
 
 =cut
 
@@ -70,9 +80,8 @@ sub get_collection {
 
 =head2 commit( [$commit_msg] )
 
-Commits all pending changes. This actually performs two git operations, the
-first being staging the files that were C<mark>ed, and them commiting the
-changes.
+Commits all pending changes with a commit message. If not provided, Giddy will
+use a default commit message listing the number of changes performed.
 
 =cut
 
@@ -93,7 +102,8 @@ sub commit {
 =head2 mark( $path | @paths )
 
 Marks files/directories as to be staged. Mostly called automatically by
-C<new_collection()>, C<new_document()>, etc.
+C<new_collection()>, C<new_document()>, etc., but you can use it if you need to.
+Paths are relative to database's path and may contain starting slashes.
 
 =cut
 
@@ -123,7 +133,9 @@ sub mark {
 
 Searches the Giddy repository for documents that match the provided
 path. The path has to be relative to the repository's root directory, which
-is considered '/'. This string will be used if C<$path> is not provided.
+is considered '/'. This string will be used if C<$path> is not provided. This is
+a convenience method for finding documents by path. See L<Giddy::Collection> and
+L<Giddy::Manual/"FULL PATH FINDING"> for more information.
 
 =cut
 
@@ -158,14 +170,14 @@ sub find_one {
 
 =head2 undo( [ $num ] )
 
-=head2 cancel( [ $num ] )
+=head2 undo( $commit_checksum )
 
 Cancels the C<$num>th latest commit performed (if $num is 0 or not passed, the
 latest commit is cancelled). Any changes performed by the commit cancelled
-are forever lost. For an alternative that doesn't lose information, see
-C<revert()>.
+are forever lost. If a commit numbered C<$num> isn't found, this method will croak.
+You can also provide a specific commit SHA-1 checksum to cancel.
 
-If a commit numbered C<$num> isn't found, this method will croak.
+For an alternative that doesn't lose information, see C<revert()>.
 
 =cut
 
@@ -185,9 +197,9 @@ sub undo {
 	$self->_repo->run('reset', '--hard', $commit);
 }
 
-sub cancel { shift->undo(@_) }
-
 =head2 revert( [ $num ] )
+
+=head2 revert( $commit_checksum )
 
 Reverts the database back to the commit just before the commit performed
 C<$num>th commits ago and creates a new commit out of it. In other words,
@@ -204,6 +216,8 @@ C<$num> will be zero by default, in which case the latest commit is
 reverted.
 
 If a commit numbered C<$num> isn't found, this method will croak.
+
+You can also provide a specific commit SHA-1 checksum.
 
 =cut
 

@@ -23,8 +23,8 @@ This class represents in-memory collections. These are created by running C<find
 and C<grep()> queries on other collection (either real collections represented by
 L<Giddy::Collection> or other in-memory collections).
 
-Using in-memory collections is I<exactly> the same as using real ones, so refer
-to L<Giddy::Collection> for details. The differences are only internal.
+Except from not being able to drop in-memory collections, using them is performed
+I<exactly> the same as using real ones, so refer to L<Giddy::Collection> for details.
 
 =head1 EXTENDS
 
@@ -52,6 +52,8 @@ has '_documents' => (is => 'ro', isa => 'Tie::IxHash', default => sub { Tie::IxH
 has '_loaded' => (is => 'ro', isa => 'HashRef[HashRef]', default => sub { {} }, writer => '_set_loaded');
 
 has '_query' => (is => 'ro', isa => 'HashRef', required => 1);
+
+override 'drop' => sub { 1 };
 
 =head1 AUTHOR
 

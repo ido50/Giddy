@@ -129,7 +129,8 @@ nothing more. Everything you know from Git is true in Giddy.
 =head2 CAN I HELP?
 
 Yes, you can. I'm currently looking for people who can help with the development
-of Giddy, especially test writing. I'd be very happy if anyone has suggestions
+of Giddy, especially test writing and helping me with adding support for other
+systems like Microsoft Windows. I'd be very happy if anyone has suggestions
 on how to make Giddy faster. Other than that, please report any bugs you find
 through the normal channels (see L<Giddy/"BUGS"> for more information on bug
 reporting).
@@ -863,7 +864,7 @@ Thanks to Git, you can easily undo changes (i.e. commits) you perform. Like Git,
 Giddy provides two ways for that: The first is completely erasing commits (like
 Git's C<git reset --hard> command) with the C<undo()> command:
 
-	$db->undo; # also called $db->cancel
+	$db->undo;
 
 This will erase the last commit perfomed, returning the database to its previous
 state as if the commit never happened. Any documents created in that commit will
@@ -876,7 +877,7 @@ You can undo more than one commits by providing a positive integer:
 
 	$db->undo(3); # erase the last four commits
 
-You can also explicitly tell Giddy which commit to undo by providing its ID:
+You can also explicitly tell Giddy which commit to undo by providing its SHA-1 checksum:
 
 	$db->undo('ed1721e4a44d24c8eefbf0ea420ff19472a3f08c');
 
@@ -884,7 +885,7 @@ The second way of undoing is reverting (Git's C<git revert> command). Here, you
 tell Giddy to take a certain commit performed in the past, clone the database snapshot
 from that commit, and re-commit it as the new state of the database. This way,
 the commits performed between the source commit and the new cloned commit are
-preserved. To revert a commit, you tell Giddy the number (or ID) of the commit
+preserved. To revert a commit, you tell Giddy the number (or SHA-1 checksum) of the commit
 performed I<just after> the commit you wish to revert to. This may be confusing,
 but that is how Git's C<revert> command works.
 
@@ -916,7 +917,7 @@ zero) identifying the commit's number (latest commit is zero):
 
 This returns a L<Git::Repository::Log> object.
 
-Unfortunately, you can't get a commit info by the commit ID yet. Hopefully future
+Unfortunately, you can't get a commit info by the commit checksum yet. Hopefully future
 versions will support this.
 
 =head2 DROPPING A DATABASE

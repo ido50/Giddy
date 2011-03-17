@@ -11,8 +11,6 @@ use File::Util;
 use Giddy::Collection::InMemory;
 use Tie::IxHash;
 
-use Data::Dumper;
-
 has 'path' => (is => 'ro', isa => 'Str', default => '/');
 
 has '_database' => (is => 'ro', isa => 'Giddy::Database', required => 1);
@@ -30,14 +28,25 @@ Giddy::Collection - A Giddy collection.
 
 =head1 SYNOPSIS
 
+	my $coll = $db->get_collection('articles');
+
 =head1 DESCRIPTION
+
+This class represents Giddy collections, which are directories holding documents
+in the database. Collections are hierarchical in Giddy (see L<Giddy::Manual> for
+more information).
+
+You will find most of your interaction with the Giddy database are performed on
+this class' objects. The class provides methods for finding documents, creating
+documents, updating documents, removing documents, iterating over query results,
+etc.
 
 =head1 ATTRIBUTES
 
 =head2 path
 
 The relative path of the collection. Defaults to '/', which is the root
-directory of the database.
+directory of the database. Always has a starting slash.
 
 =head2 _database
 
@@ -55,21 +64,32 @@ Not to be used externally.
 =head3 find( [ \%query, \%options ] )
 
 Searches the collection for documents that match the provided query.
-If no query is given, every document in the collection will be matched.
+If no query is given, every document in the collection will be matched. See
+L<Giddy::Manual/"FINDING DOCUMENTS"> for more information on queries.
 
 =head3 find( [ $name, \%options ] )
 
 Searches the collection for documents (more correctly "a document")
-whoe name equals C<$name>. This is a shortcut for C<< find({ _name => $name }, $options) >>.
+whos name equals C<$name>. This is a shortcut for C<< find({ _name => $name }, $options) >>.
 
 =head2 find( [ $regex, \%options ] )
 
 Searches the collection for documents whose name matches the regular
 expression provided. This is a shortcut for C<< find({ _name => qr/some_regex/ }, $options >>.
 
+All version of the method return a L<Giddy::Collection::InMemory> object, which
+inherits from this class.
+
 Searching just by name (either for equality or with a regex) is much faster
-than searching by query, as Giddy isn't forced to load and deserialize
+than searching by other attributes, as Giddy isn't forced to load and deserialize
 every document.
+
+In any of the above versions of the method, if you don't provide a query, or provide
+an empty string or empty hash-ref, every document in the collection will be matched.
+
+You can also pass a hash-ref of options. Currently, only the 'skip_binary' option
+is available. If provided with a true value, binary attributes of documents will
+be ignored. See L<Giddy::Manual/"BINARY ATTRIBUTES"> for info on binary attributes.
 
 =cut
 
@@ -124,18 +144,24 @@ sub find_one {
 
 =head3 grep( [ \@strings, \%options ] )
 
-Finds documents whose file contents (ignoring attributes and database YAML
+Finds documents whose file contents (I<including> attribute names and database YAML
 structure) match all (or any, depending on C<\%options>) of the provided
 strings. This is much faster than using C<find()> as it simply uses the
-git-grep command, but is obviously less useful.
+C<git grep> command, but is obviously less useful.
 
-=head3 grep( [ $string, \%options ] )
+The only option supported is 'or'. If passed with a true value, documents that
+have at least one of the provided strings will be matched. Otherwise only documents
+that have all strings are matched.
 
-Finds documents whose file contents (ignoring attributes and database YAML
-structure) match the provided string. This is much faster than using C<find()> as it simply uses the
-git-grep command, but is obviously less useful.
+If the strings array is empty, all documents in the collection will match.
 
-Both methods return a L<Giddy::Cursor> object.
+=head3 grep( [ $string ] )
+
+Finds documents whose file contents (I<including> attribute names and database YAML
+structure) match the provided string. If string is empty, all documents in the
+collection will match.
+
+Both methods return a L<Giddy::Collection::InMemory> object.
 
 =cut
 
@@ -209,7 +235,21 @@ sub grep_one {
 
 =head2 DOCUMENT MANIPULATION
 
-=head3 insert( $filename, \%attributes )
+=head3 insert( $name, \%attributes )
+
+Creates a new document in the collection. You must provide a name for the document
+(keep in mind that the name will be the document's file/directory's name, so try
+not to use fancy characters), and a hash-ref of the document's attributes. This hash-ref
+doesn't have to be flat, attributes can be nestable (i.e. they can have array and
+hash references themselves).
+
+If C<$attributes> has the '_body' key, the document created will be a document
+file. Otherwise a document directory will be created. See L<Giddy::Manual/"CREATING DOCUMENTS">
+for more information on documents.
+
+Returns the path of the document created relative to the database root directory
+(including a starting slash). Croaks if a document or a sub-collection named C<$name>
+already exists in the collection.
 
 =cut
 
@@ -223,6 +263,10 @@ sub insert {
 }
 
 =head3 batch_insert( [ $path1 => \%attrs1, $path2 => \%attrs2, ... ] )
+
+Inserts a series of documents one after another. Returns a list of all document
+paths created. If even one document cannot be created (mostly since a similarly
+named document/collection already exists), none will be created.
 
 =cut
 
@@ -270,6 +314,26 @@ sub batch_insert {
 =head3 update( $name, \%object, [ \%options ] )
 
 =head3 update( \%query, \%object, [ \%options ] )
+
+Performs a query on the collection, and updates the first document found according
+to the update object (C<\%object> above). You must provide a query, but this
+can be an empty string or hash-ref, in which case all documents in the collection
+will be matched. An options hash-ref can be provided, with any of the following options:
+
+=over
+
+=item * skip_binary - See L</"BINARY ATTRIBUTES"> for info.
+
+=item * multiple - Update all documents you find, not just the first one.
+
+=item * upsert - If you don't find any document that matches the query, create one
+
+=back
+
+Returns a hash-ref with two keys: 'n' - with the number of documents updated (0
+if none) and 'docs' - an array-ref with the names of all documents updated (empty if none).
+
+See L<Giddy::Manual/"UPDATING DOCUMENTS"> for more information on updating.
 
 =cut
 
@@ -326,6 +390,11 @@ sub update {
 =head3 remove( [ $name, \%options ] )
 
 =head3 remove( [ \%query, \%options ] )
+
+Performs a query on the collection, and removes every document matched. If a query
+is not provided (or if empty string or hash-ref), every document in the collection
+is removed. If you pass an options hash-ref with the 'just_one' key holding a true
+value, only one document will be removed (the first matched, if any).
 
 =cut
 
@@ -545,8 +614,8 @@ sub has_next {
 
 =head3 next()
 
-Returns the document found by the query from the iterator's current
-position, and increases the iterator to point to the next document.
+Returns the document currently pointed to by the iterator, and increases the
+iterator to point to the next document.
 
 =cut
 
@@ -605,7 +674,8 @@ sub last {
 =head3 drop()
 
 Removes the collection from the database. Will not work (and croak) on
-the root collection.
+the root collection. Every document and sub-collection in the collection will
+be removed. This method is not available on L<Giddy::Collection::InMemory> objects.
 
 =cut
 
@@ -663,8 +733,6 @@ sub _documents {
 
 =head2 _inc_loc()
 
-Increases the iterator's position by one.
-
 =cut
 
 sub _inc_loc {
@@ -674,8 +742,6 @@ sub _inc_loc {
 }
 
 =head2 _load_document( $index )
-
-Loads a document from the collection.
 
 =cut
 
