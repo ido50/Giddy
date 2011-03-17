@@ -306,6 +306,16 @@ different: you have to provide an even-number array-ref, like so:
 As previousely mentioned, data inserted is automatically UTF-8 decoded,
 so make sure your data actually is UTF-8.
 
+Note that the C<insert()> method returns the full path of the document created.
+For example, creating 'index.html' in the '/articles' collection returns '/articles/index.html'.
+C<batch_insert()> will return an array of all paths created.
+
+After creating documents, they are not yet added to the database. You have to commit
+your changes first. If you know Git (and you should), you'd know you have to stage
+the created files for Git to recognize them with the C<git add> command. Giddy
+does that automatically for you, so there's no need to do that. However, Git doesn't
+commit automatically. See L</"COMMITING CHANGES"> later on for more info.
+
 =head2 FINDING DOCUMENTS
 
 Finding/querying documents in Giddy is very similar to MongoDB, but with
@@ -655,11 +665,138 @@ This will essentially find the collection '/forum/general_topics' for you, and
 then run C<find('giddy_is_cool')> on it. You can still use C<find_one()> too, which
 is more appropriate in the above example.
 
+=head3 BINARY ATTRIBUTES
+
+Your documents can have binary attributes. For example, maybe you have a collection
+of articles, and every article has a little picture attached to it:
+
+	articles/
+		article-one/
+			attributes.yaml
+			picture.png
+		article-two/
+			attributes.yaml
+			picture.png
+
+Both 'article-one' and 'article-two' have the binary 'picture.png' attribute.
+
+Giddy's support for binary attributes is currently very limited. You can't create
+binary attributes with Giddy, you'd have to do that manually (i.e. by direct
+manipulation of the database's working copy), and you can't query by binary attributes
+(even for existance, for example).
+
+To make it clear, anything outside attributes.yaml is considered binary by Giddy,
+even if it's not.
+
+When Giddy loads a document, however, it will look for binary attributes, and if
+it finds any, it will add them to the document hash-ref, with their full paths as
+their value. So, loading 'article-one', for example, will look something like this:
+
+	{
+		'_name' => 'article-one',
+		'title' => 'Article One',
+		'author' => 'Some Guy',
+		'picture.png' => '/articles/article-one/picture.png',
+	}
+
+Giddy doesn't yet provide the ability to read the binary attribute, but will do
+so in upcoming versions.
+
+When querying for documents, you can tell Giddy to skip binary attributes by passing
+a hash-ref with the 'skip_binary' option to C<find()>:
+
+	my $in_mem = $coll->find({}, { skip_binary => 1 }); # get all documents, but don't look for binary attributes
+
 =head2 UPDATING DOCUMENTS
 
 Giddy implements MongoDB's update strategy almost completely. Apart from
 not yet supporting MongoDB's dot notation used to update sub-attributes
 (i.e. nested fields), almost all MongoDB's update operations are supported.
+
+Updating is performed with the C<update()> method. This method expects a query
+(exactly like C<find()>), an update object (which is a hash-ref of update operations,
+described later), and a hash-ref of options. The following options are currently
+supported:
+
+=over
+
+=item * skip_binary - See L</"BINARY ATTRIBUTES"> for info.
+
+=item * multiple - Update all documents you find, not just the first one.
+
+=item * upsert - If you don't find any document that matches the query, create one
+
+=back
+
+So, updating is performed by calling C<update()> like so:
+
+	$coll->update($query, $object, $options);
+
+You don't have to provide any options, but you have to provide a query (which may
+be an empty string or an empty hash-ref, useful when you want to update every
+document), and you must provide the update object.
+
+Now, let's look at the operations you can use in the update object:
+
+=over
+
+=item * C<$inc> - Increase the value of a numerical attribute (provide a negative value to decrease):
+
+	$coll->update({ number => { '$exists' => 1 } }, { '$inc' => { number => 3 } }, { multiple => 1 }); # increases the 'number' attribute of all documents that have it (and in which it is numerical) by three
+
+=item * C<$set> - Set the value for an attribute (creating it if necessary)
+
+	$coll->update({ number => { '$exists' => 0 } }, { '$set' => { number => 0 } }, { multiple => 1 });
+
+=item * C<$unset> - The opposite of C<$set>. This doesn't nullify an attribute but completely removes it
+
+=item * C<$push> - Pushes a value to an array attribute:
+
+	$coll->update({ numbers => { '$type' => 'array' } }, { '$push' => { numbers => 42 } }, { multiple => 1 });
+
+=item * C<$pushAll> - Pushes a list of values to an array attribute:
+
+	$coll->update({ numbers => { '$type' => 'array' } }, { '$pushAll' => { numbers => [42, 43, 44] } }, { multiple => 1 });
+
+=item * C<$addToSet> - Pushes a value to an array, unless it's already there.
+
+=item * C<$pop> - Removes an item for an array attribute (not from its end, you have to provide the index):
+
+	$coll->update({ numbers => { '$type' => 'array' } }, { '$pop' => { numbers => 0 } }, { multiple => 1 }); # remove the first item in the 'numbers' attribute
+
+=item * C<$rename> - Renames an attribute:
+
+	$coll->update('index.html', { '$rename' => { 'old_attribute_name' => 'new_attribute_name' } });
+
+=item * C<$pull> - Remove all occurrences of a specific value from an array attribute:
+
+	$coll->update('index.html', { '$pull' => { numbers => 42 } }); # Remove 42 for the 'numbers' attribute of 'index.html'
+
+=item * C<$pullAll> - Remove all occurrences of a list of specific values from an array attribute:
+
+	$coll->update('index.html', { '$pullAll' => { numbers => [42, 43, 45] } });
+
+=back
+
+The above update operations aren't the only way to update documents. If the update
+hash-ref doesn't have any of the above operations, then the hash-ref is considered
+the new document in its entirety. So, any document matched by the update query (more
+useful without the 'multiple' option) will have its content complete replaced by
+the update hash-ref.
+
+The output of the C<update()> command is a hash-ref with two keys: 'n' - holding
+the number of documents updated by the query (0 if none updated), and 'docs' -
+holding an array-ref with the names of all documents updated (empty if none).
+
+Giddy will automatically stage the documents updated (i.e. run C<git add> on them)
+after updating. As with C<insert()>, changes are not stored in the database until
+a commit is performed.
+
+One thing worth noting: when you're not using the 'multiple' option, Giddy will
+update the first document it finds. By default, documents are sorted alphabetically
+by name in ascending order. If you want to update the first document of a collection
+in a specific order, you'll have to sort the collection first with the C<sort()>
+method, and only the run the C<update()> command.
 
 =head2 DELETING DOCUMENTS
 
