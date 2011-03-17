@@ -298,8 +298,135 @@ different: you have to provide an even-number array-ref, like so:
 As previousely mentioned, data inserted is automatically UTF-8 decoded,
 so make sure your data actually is UTF-8.
 
+=head2 FINDING DOCUMENTS
+
+Finding/querying documents in Giddy is very similar to MongoDB, but with
+a key difference inspired by L<DBIx::Class>: In MongoDB, a collection is
+queried with the C<find()> or C<query()> methods, and a cursor/iterator
+object (L<MongoDB::Cursor>) is returned, allowing to iterate over the
+results. In Giddy, however, there aren't any cursors. When you query a
+collection, you don't get a cursor back, but an entirely new collection,
+stored in memory, which is a subset of the queried collection. This is just
+like in the SQL world: when you select rows from a table, the result set
+is a temporary table of its own that can also be queried.
+
+So, in Giddy, a collection is both query-able and iterable. You can iterate
+through the documents in the collection without querying it. When you do
+query it, you get an in-memory collection back, which you can perform further
+queries on. This allows for much more flexbility when filtering documents.
+
+Finding documents is primarily performed by the C<find()> method in
+L<Giddy::Collection>. This method expects (but doesn't require) a hash-ref
+of whose keys are attribute names, and whose values are constraints
+that a document must conform to in order to be matched by the query. For
+example, let's find documents that have an 'author' attribute with the
+value 'Some Guy':
+
+	my $in_mem_coll = $coll->find({ author => 'Some Guy' });
+
+This roughly translates to the SQL command C<< SELECT * FROM <collection> WHERE author = 'Some Guy' >>.
+By default, if you provide multiple attributes, then an AND query is performed:
+
+	$coll->find({ author => 'Some Guy', year => 2011 });
+
+This translates to C<< SELECT * FROM <collection> WHERE author = 'Some Guy' AND year = 2011 >>.
+Equality is the easiest constraint for an attribute. However, there are
+many more constraints one can use. These constraints need to be defined
+in a hash-ref, and this hash-ref is assigned to the appropriate attribute
+in the query. The following constraints are supported:
+
+=over
+
+=item * C<$gt> - Requires that an attribute's value will be larger (either
+numerically or textually) then the provided value. For example:
+
+	$coll->find({ number => { '$gt' => 3 } })
+
+=item * C<$gte> - Requires that an attribute's value will be larger than
+or equal to the provided value.
+
+=item * C<$lt> - Requries that an attribute's value will be lower than
+the provided value.
+
+=item * C<$lte> - Requires that an attribute's value will be lower than
+or equal to the provide value.
+
+=item * C<$ne> - Requires that an attribute's value will I<not> be equal
+to the provided value:
+
+	$coll->find({ author => { '$ne' => 'Some Guy' } })
+
+=item * C<$eq> - Requires that an attribute's value will be equal to the
+provided value. This is useful when you're using more than one constraint
+on an attribute and want to use equality too, or just for consistency with
+all other constraints, if you prefer so.
+
+=item * C<$exists> - If provided a true value, requires that a document has
+this attribute (even if its value is undefined, i.e. null). If provided
+a false value, requires that a document doesn't have that attribute. For
+example:
+
+	$coll->find({ author => { '$exists' => 1 } })
+
+Will find documents that have the 'author' attribute, while
+
+	$coll->find({ author => { '$exists' => 0 } })
+
+Will find documents that don't have the 'author' attribute.
+
+=item * C<$mod> - If set an array-ref of two numbers, requires that the remainder
+of an number-attribute's value divided by the array's first value will equal
+the array's second value. For example:
+
+	$coll->find({ number => { '$mod' => [10, 1] } })
+
+Will find documents that have the 'number' attribute with a value, say 'x',
+for which x % 10 == 1.
+
+=item * C<$in> - Requires that an attribute's value will be one of the values
+in the provided array. For example:
+
+	$coll->find({ author => { '$in' => ['Some Guy', 'Other Guy', 'That Guy'] } })
+
+Will match all documents whose author attribute is either 'Some Guy',
+'Other Guy' or 'That Guy'.
+
+=item * C<$nin> - The opposite of C<$in>, requires that an attribute's
+value will I<not> be in the provided array.
+
+=item * C<$size> - Requires that an array-attribute will have an exact
+size:
+
+	$coll->find({ children => { '$size' => 3 } })
+
+This query will match documents that have a 'children' attributes whose
+value is an array that has exactly three items.
+
+=item * C<$all> - Requires that an array-attribute will have all of the
+provided values. For example:
+
+	$coll->find({ children => { '$all' => ['Mark', 'Peter'] } })
+
+Will find documents that have a 'children' attribute with an array that
+contains both the values 'Mark' and 'Peter' (it can, of course, contain
+more values). The order of the values does not matter.
+
+=item * C<$type> - Requires that a document have an attribute whose value
+is of a specific type. Supported types are 'int' for integer, 'double'
+for a floating point number, 'string', 'array', 'bool' (for boolean, but
+note that any attribute that exists will match this type since everything
+in Perl is a boolean), 'date' (for L<DateTime::Format::W3CDTF> formatted
+strings), 'null' (for undefined values) and 'regex' (for regular expression
+objects like those created with the C<qr//> operator).
+
+	$coll->find({ children => { '$type' => 'array' }, number => { '$type' => 'double' } })
+
+
+
 =head2 UPDATING DOCUMENTS
 
 Giddy implements MongoDB's update strategy almost completely. Apart from
 not yet supporting MongoDB's dot notation used to update sub-attributes
 (i.e. nested fields), almost all MongoDB's update operations are supported.
+
+

@@ -188,6 +188,13 @@ sub _attribute_matches {
 					} else {
 						return unless $doc->{$key} le $term;
 					}
+				} elsif ($q eq '$eq') {
+					return unless defined $doc->{$key} && !ref $doc->{$key};
+					if ($doc->{$key} =~ m/^\d+(\.\d+)?$/) {
+						return unless $doc->{$key} == $term;
+					} else {
+						return unless $doc->{$key} eq $term;
+					}
 				} elsif ($q eq '$ne') {
 					return unless defined $doc->{$key} && !ref $doc->{$key};
 					if ($doc->{$key} =~ m/^\d+(\.\d+)?$/) {
@@ -215,27 +222,23 @@ sub _attribute_matches {
 						return unless $self->_value_in($_, $doc->{$key});
 					}
 				} elsif ($q eq '$type' && $term =~ m/^\d+$/) {
-					if ($term == 1) {
-						# double
+					if ($term eq 'int') {
+						return unless defined $doc->{$key} && $doc->{$key} =~ m/^\d+$/;
+					} elsif ($term eq 'double') {
 						return unless defined $doc->{$key} && $doc->{$key} =~ m/^\d+\.[1-9]\d*$/;
-					} elsif ($term == 2) {
-						# string
+					} elsif ($term eq 'string') {
 						return unless defined $doc->{$key} && $doc->{$key} =~ m/^[[:alnum:]]+$/;
-					} elsif ($term == 4) {
-						# array
+					} elsif ($term eq 'array') {
 						return unless defined $doc->{$key} && ref $doc->{$key} eq 'ARRAY';
-					} elsif ($term == 8) {
+					} elsif ($term eq 'bool') {
 						# boolean - not really supported, will always return true since everything in Perl is a boolean
-					} elsif ($term == 9) {
-						# date
+					} elsif ($term eq 'date') {
 						return unless defined $doc->{$key} && !ref $doc->{$key};
 						my $date = try { DateTime::Format::W3CDTF->parse_datetime($doc->{$key}) } catch { undef };
 						return unless blessed $date && $date->isa('DateTime');
-					} elsif ($term == 10) {
-						# null (undef)
+					} elsif ($term eq 'null') {
 						return unless exists $doc->{$key} && !defined $doc->{$key};
-					} elsif ($term == 11) {
-						# regex
+					} elsif ($term eq 'regex') {
 						return unless defined $doc->{$key} && ref $doc->{$key} eq 'Regexp';
 					}
 				}
