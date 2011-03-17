@@ -15,6 +15,12 @@ Giddy - Schema-less, versioned media/document database based on Git.
 
 =head1 SYNOPSIS
 
+	use Giddy;
+
+	my $giddy = Giddy->new;
+
+	my $db = $giddy->get_database('/path/to/database');
+
 =head1 DESCRIPTION
 
 WARNING: THIS IS ALPHA SOFTWARE, RELEASED FOR TESTING PURPOSES ONLY. DO
@@ -53,17 +59,23 @@ Main database features (not all features implemented yet):
 
 STOP: This document (and all other module documentation provided with the
 distribution) are for reference purposes only. Please read L<Giddy::Manual>
-before using Giddy to learn about the database system and its usage.
-
-=head1 ATTRIBUTES
+before using Giddy to learn about the database system and how to use it.
 
 =head1 CLASS METHODS
 
 =head2 new()
 
+Creates a new instance of this module.
+
 =head1 OBJECT METHODS
 
 =head2 get_database( $path )
+
+Returns a L<Giddy::Database> object tied to a Git repository located on the file
+system. Please provide full path names to prevent potential problems.
+
+If the path doesn't exist, Giddy will attempt to create it and initialize it
+as a Git repository.
 
 =cut
 

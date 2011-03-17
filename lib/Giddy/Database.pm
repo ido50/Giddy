@@ -17,6 +17,8 @@ Giddy::Database - A Giddy database.
 
 =head1 SYNOPSIS
 
+	my $db = $giddy->get_database('/path/to/database');
+
 =head1 DESCRIPTION
 
 =head1 ATTRIBUTES
@@ -77,7 +79,7 @@ changes.
 sub commit {
 	my ($self, $msg) = @_;
 
-	$msg ||= "Commiting ".scalar(@{$self->_marked})." changes";
+	$msg ||= "Commited ".scalar(@{$self->_marked})." changes";
 
 	# commit
 	$self->_repo->run('commit', '-m', $msg);
@@ -170,11 +172,17 @@ If a commit numbered C<$num> isn't found, this method will croak.
 sub undo {
 	my ($self, $num) = @_;
 
-	$num ||= 0;
-
-	my $log = $self->log($num+1);
-	croak "Can't find commit number $num." unless $log;
-	$self->_repo->run('reset', '--hard', $log->commit);
+	my $commit;
+	if (defined $num && $num !~ m/^\d+$/) {
+		# seems we've been provided with a commit hash, not number
+		$commit = $num;
+	} else {
+		$num ||= 0;
+		my $log = $self->log($num+1);
+		croak "Can't find commit number $num." unless $log;
+		$commit = $log->commit;
+	}
+	$self->_repo->run('reset', '--hard', $commit);
 }
 
 sub cancel { shift->undo(@_) }
@@ -202,11 +210,17 @@ If a commit numbered C<$num> isn't found, this method will croak.
 sub revert {
 	my ($self, $num) = @_;
 
-	$num ||= 0;
-
-	my $log = $self->log($num);
-	croak "Can't find commit number $num." unless $log;
-	$self->_repo->run('revert', $log->commit);
+	my $commit;
+	if (defined $num && $num !~ m/^\d+$/) {
+		# seems we've been provided with a commit hash, not number
+		$commit = $num;
+	} else {
+		$num ||= 0;
+		my $log = $self->log($num);
+		croak "Can't find commit number $num." unless $log;
+		$commit = $log->commit;
+	}
+	$self->_repo->run('revert', $commit);
 }
 
 =head2 log( [ $num ] )

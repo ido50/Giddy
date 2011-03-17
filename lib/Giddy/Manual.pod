@@ -126,6 +126,14 @@ working directory. Yes, because you can have a bare clone of the database
 directly. Always remeber that Giddy databases are plain Git repositories,
 nothing more. Everything you know from Git is true in Giddy.
 
+=head2 CAN I HELP?
+
+Yes, you can. I'm currently looking for people who can help with the development
+of Giddy, especially test writing. I'd be very happy if anyone has suggestions
+on how to make Giddy faster. Other than that, please report any bugs you find
+through the normal channels (see L<Giddy/"BUGS"> for more information on bug
+reporting).
+
 =head1 DATABASE STRUCTURE
 
 As previousely stated, a Giddy database is a Git repository. Like MongoDB,
@@ -310,10 +318,12 @@ stored in memory, which is a subset of the queried collection. This is just
 like in the SQL world: when you select rows from a table, the result set
 is a temporary table of its own that can also be queried.
 
-So, in Giddy, a collection is both query-able and iterable. You can iterate
-through the documents in the collection without querying it. When you do
-query it, you get an in-memory collection back, which you can perform further
-queries on. This allows for much more flexbility when filtering documents.
+So, in Giddy, a collection (represented by a L<Giddy::Collection> object) is both
+query-able and iterable. You can iterate through the documents in the collection
+without querying it. When you do query it, you get an in-memory collection back
+(represented by a L<Giddy::Collection::InMemory> object, which inherits from
+Giddy::Collection), on which you can perform further queries. This allows for
+much more flexbility when filtering documents.
 
 Finding documents is primarily performed by the C<find()> method in
 L<Giddy::Collection>. This method expects (but doesn't require) a hash-ref
@@ -421,7 +431,229 @@ objects like those created with the C<qr//> operator).
 
 	$coll->find({ children => { '$type' => 'array' }, number => { '$type' => 'double' } })
 
+=back
 
+Now, as stated, documents will be matched against the query hash-ref for I<all>
+the attributes, meanings this is basically an AND search. Giddy also provides
+support for OR queries, just like in MongoDB:
+
+	$coll->find({ '$or' => [ { author => 'Some Guy' }, { author => 'Other Guy' } ], year => 2011 })
+
+This roughly translates to the SQL command C<< SELECT * FROM <collection> WHERE
+year = 2011 AND (author = 'Some Guy' OR author = 'Other Guy') >>.
+
+The constraints you provide for the attributes in the C<$or> array-ref are the
+same as when performing regular queries:
+
+	$coll->find({ '$or' => [ { author => { '$exists' => 1 } }, { guy_we_stole_this_from => { '$exists' => 1 } } ] })
+
+This will find documents that either have the 'author' attribute or the
+'guy_we_stole_this_from' attribute.
+
+=head3 QUERYING BY DOCUMENT NAME
+
+As previously mentioned, every document in a Giddy collection has a name. In case
+of a file-based document, this would be the file name (like 'index.html'). In case
+of a directory-based document, this would be the directory name (like 'blog-post').
+This name is the document's '_name' attribute, and you can query it like any
+other attribute:
+
+	$coll->find({ _name => 'index.html' }); # find documents named index.html (there can't be more than one)
+
+	$coll->find({ _name => qr/^index/ }); # find documents whose name starts with 'index' (definitely can be more than one)
+
+Searching I<only> by name is much faster than by any other attribute, since all
+Giddy has to do is match file/directory names, instead of loading (and deserializing)
+every document. Since this is very useful, Giddy provides a shortcut for finding
+documents by name:
+
+	$coll->find('index.html');
+	
+	$coll->find(qr/^index/);
+
+These two statements are equal to the previous two.
+
+Remember you can chain C<find()> queries if you find the need to. For example:
+
+	$coll->find({ _name => qr/^index/ })->find({ author => { '$exists' => 1 } });
+
+The first find() call returns a L<Giddy::Collection::InMemory> object. The second
+one is performed on that and returns an entirely new object.
+
+=head3 FAST DOCUMENT MATCHING WITH GREP
+
+Since querying with the C<find()> document is pretty slow (especially on large
+collections and when you're not querying only by name), Giddy provides another
+option which, although less useful, is much faster: the C<grep()> method can be
+used to find documents whose content matches a provided string. For example:
+
+	$coll->grep('Some Guy');
+
+This statement will find all documents that have the 'Some Guy' string I<anywhere>
+in them - this means attributes names, attribute values, anything.
+
+You can grep for multiple strings in a document easily:
+
+	$coll->grep(['Some Guy', 'Other Guy', 'Jeffery']);
+
+This will find documents that have all three strings in them (not necessarily at
+the same line). If you want to find documents that have at least one of the strings
+(i.e. perform an OR search), then pass the 'or' option to the method like so:
+
+	$coll->grep(['Some Guy', 'Other Guy', 'Jeffery'], { or => 1 });
+
+Just like the C<find()> method, C<grep()> returns an in-memory collection, so
+iterating over C<grep()> results is the same as iterating over C<find()> results.
+It also means that you can combine both types of queries, like so:
+
+	$coll->find({ _name => qr/^index/ })->grep('Some Guy');
+
+The grep method internally uses Git's C<git grep> command.
+
+=head3 I ONLY WANT ONE
+
+Like MongoDB, Giddy provides a shortcut for finding just one document. This is
+mostly helpful when searching by an exact document name, but knock yourself out:
+
+	my $doc = $coll->find_one({ _name => 'index.html' })
+		|| die "No index.html, oh my god, I have no idea what to do, redirecting you to google.com";
+
+This will attempt to find a document named 'index.html'. If it is found, it is
+returned in hash-ref format (more about loaded documents later on). If not,
+an undefined value is returned. The above call to C<find_one()> is the same as
+C<find_one('index.html')>, by the way.
+
+You can do the same thing with grep:
+
+	my $doc = $coll->grep_one('Some Guy');
+
+Both C<find_one()> and C<grep_one()> methods will always return the I<first>
+document they find (if any, of course). Which one this document will be depends
+on the sorting used. Sorting is discussed later on, but you should already know
+that by default, C<find()> and C<grep()> will sort documents alphabetically by
+name in ascending order.
+
+=head3 I WANT ALL DOCUMENTS
+
+If you want to get all the documents in a collection, just don't provide a query
+(or provide an empty string, an empty regex, or an empty hashref):
+
+	$coll->find();
+	$coll->find('');
+	$coll->find(qr//);
+	$coll->find({});
+
+All of these will match every document in the collection. Grep is just slightly
+different:
+
+	$coll->grep();
+	$coll->grep('');
+	$coll->grep([]);
+
+=head3 ITERATING OVER RESULTS
+
+When you have a collection object, either a pure L<Giddy::Collection> object or
+a L<Giddy::Collection::InMemory> object (which is the result of a C<find()> or
+C<grep()> query), then you can easily iterate over the matched documents. Every
+collection object has an internal iterator that points to the next document in
+the collection. When the collection object is first created, this iterator will
+point to the first document (if any). Like MongoDB, you go through the documents
+with the C<next()> method:
+
+	my $in_mem = $coll->find(qr/some_guy/);
+	while (my $doc = $in_mem->next) {
+		print "Found $doc->{_name}\n";
+	}
+
+As you can see, C<next()> will keep returning documents from the collection (and
+increasing the internal iterator), until no more documents are available. At any
+point, you can rewind the iterator to the beginning:
+
+	$in_mem->rewind; # now you can run C<next()> again
+
+You can also get all the documents found with just one command:
+
+	my @docs = $in_mem->all;
+
+The C<all()> method automatically rewinds the iterator when it reaches the end of
+the collection.
+
+If you only want to know whether the internal iterator has reached the end of the
+collection or not, use the C<has_next()> command:
+
+	while ($in_mem->has_next) {
+		my $doc = $in_mem->next;
+		print "Found $doc->{_name}\n";
+	}
+
+If you want to know how many documents are in the collection just use the C<count()>
+method.
+
+	print "\$coll has ", $coll->count," documents, and our query matched ", $in_mem->count," documents out of them.\n";
+
+Keep in mind though that, unlike MongoDB, you can't pass anything to the C<count()>
+method (well, you can, but it will be ignored) as a shortcut for querying and
+counting in one shot.
+
+Giddy also lets you easily get the first and last documents in the collection (more
+useful when sorting):
+
+	my $first_doc = $in_mem->first;
+	my $last_doc = $in_mem->last;
+
+It's important to note that calling these methods doesn't affect the internal
+iterator, or take it into consideration at all, so you can always call these methods.
+
+=head3 SORTING DOCUMENTS
+
+Sorting is fairly easy with Giddy, and quite similar to MongoDB. However, you can't
+sort I<while> running queries, only after them. By default, collections (both
+real ones and in-memory ones) will have their documents sorted alphabetically by
+name in ascending order. To sort them in a different order, you use the C<sort()>
+method, providing it with an even-numbered array-ref like so:
+
+	my $in_mem = $coll->find({ author => 'Some Guy' })->sort([date => -1, title => 1]);
+
+This will find documents whose author attribute equals 'Some Guy', and then sort
+the returned collection by the 'date' attribute in descending order (-1 means
+descending), and then by the 'title' attribute in ascending order (1 means
+ascending). The C<sort()> method simply returns the collection object, so you can
+chain it too:
+
+	$coll->find({ author => 'Some Guy' })->sort([date => -1, title => 1])->grep('Some String');
+
+A couple of things worth knowing when it comes to sorting:
+
+=over
+
+=item 1. If you query a collection only by name (or with C<grep()> and then attempt
+to sort by other attributes, Giddy will be forced to load all documents in the
+collection, making it much slower.
+
+=item 2. Just like any other of the iteration methods, you can sort real collections
+too, not just in-memory collections. So, for example:
+
+	my $coll = $db->get_collection('articles')->sort([date => -1]);
+
+This will give you a L<Giddy::Collection> object sorted descendingly by date.
+
+=back
+
+You can sort a collection as much as you want.
+
+=head3 FULL PATH FINDING
+
+Since Giddy is web-oriented, it might be useful for you search for documents that
+match a full path, disregarding whatever collection its in. For example, looking back
+at the example database structure from earlier in this manual, say we wanted to
+find the 'giddy_is_cool' document. We can use C<find()> on the database object
+like so:
+
+	my $doc = $db->find('/forum/general_topics/giddy_is_cool');
+
+This will essentially find the collection '/forum/general_topics' for you, and
+then run C<find('giddy_is_cool')> on it. You can still use C<find_one()> too, which
+is more appropriate in the above example.
 
 =head2 UPDATING DOCUMENTS
 
@@ -429,4 +661,131 @@ Giddy implements MongoDB's update strategy almost completely. Apart from
 not yet supporting MongoDB's dot notation used to update sub-attributes
 (i.e. nested fields), almost all MongoDB's update operations are supported.
 
+=head2 DELETING DOCUMENTS
 
+Deleting documents from a collection is performed by the C<remove()> method. This
+method expects a query (exactly like C<find()>), and a hash-ref of options. Only
+one option is currectly recognized: 'just_one'. If passed a true value, C<remove()>
+will delete only the first document it matches. Otherwise, it will remove all documents
+matched. When using 'just_one', you should note that the identity of the first
+document depends on the sorting of the collection. By default, as said, the sorting
+is alphabetical by name (ascending). You can sort the collection before using
+C<remove()> with 'just_one' to remove the first document according to a different
+sorting. 
+
+The following examples explain how to use the C<remove()> method:
+
+	$coll->remove(); # remove every document in the collection (but not the collection itself)
+
+	$coll->remove('index.html'); # remove the 'index.html' document (if exists)
+
+	$coll->remove({ _name => 'index.html' }); # same as above
+
+	$coll->remove(qr/^index/); # remove documents whose name begins with 'index'
+
+	$coll->remove({ _name => qr/^index/ }); # same as above
+
+	$coll->remove({ author => 'Some Guy' }); # remove all documents by Some Guy
+
+	$coll->sort([date => -1])->remove({ author => 'Some Guy' }, { just_one => 1 }); # remove just the newest document by Some Guy
+
+Internally, the C<remove()> method deletes documents with Git's C<git rm> command.
+
+=head2 DROPPING COLLECTIONS
+
+Dropping collections is easy:
+
+	$coll->drop;
+
+This will completely remove the collection and all documents/files/subcollections
+in it. Internally, the drop command uses the C<git rm> command.
+
+=head2 COMMITING CHANGES
+
+After creating collections/documents, or basically making any kind of changes,
+you need to commit the changes for them to actually take effect. Commiting in Giddy
+is very simple. You don't have to stage files like you do with C<git add> when
+manipulating collections and documents, Giddy does that automatically for you.
+
+To commit, just use the C<commit()> method with a commit message on the database
+object:
+
+	$db->commit("Created some new documents and remove some old one");
+
+You don't have to provide a commit message, but do yourself a favor and do so. If
+you don't provide one, Giddy will use a commit message like "Commited 5 changes".
+
+If for some reason you need to (for example for adding binary attributes), you can
+manually stage files with the C<mark()> method:
+
+	$db->mark('/index.html', '/collection/article.html', '/collection/some_document_directory');
+
+=head2 UNDOING STUFF
+
+Thanks to Git, you can easily undo changes (i.e. commits) you perform. Like Git,
+Giddy provides two ways for that: The first is completely erasing commits (like
+Git's C<git reset --hard> command) with the C<undo()> command:
+
+	$db->undo; # also called $db->cancel
+
+This will erase the last commit perfomed, returning the database to its previous
+state as if the commit never happened. Any documents created in that commit will
+vanish, and documents removed by that commit will reappear, and any updates will
+be lost.
+
+You can undo more than one commits by providing a positive integer:
+
+	$db->undo(1); # erase everything from the previous commit on (i.e. the last two commits)
+
+	$db->undo(3); # erase the last four commits
+
+You can also explicitly tell Giddy which commit to undo by providing its ID:
+
+	$db->undo('ed1721e4a44d24c8eefbf0ea420ff19472a3f08c');
+
+The second way of undoing is reverting (Git's C<git revert> command). Here, you
+tell Giddy to take a certain commit performed in the past, clone the database snapshot
+from that commit, and re-commit it as the new state of the database. This way,
+the commits performed between the source commit and the new cloned commit are
+preserved. To revert a commit, you tell Giddy the number (or ID) of the commit
+performed I<just after> the commit you wish to revert to. This may be confusing,
+but that is how Git's C<revert> command works.
+
+	$db->revert(); # Will revert the latest commit and clone the commit before it
+
+	$db->revert(1); # will revert the two latest commits
+
+	$db->revert('ed1721e4a44d24c8eefbf0ea420ff19472a3f08c'); # revert a specific commit
+
+Please note that reverting will fail if the database's working directory isn't
+clean (i.e. uncommited changes has been performed prior to calling C<revert()>).
+
+=head2 KNOW THY HISTORY
+
+Using a Git-based database, you'd probaby like to put Git's history examining
+capabilities into good use. In Git, you do this with the C<git log> command and
+its relatives. In Giddy, you use the C<log()> method on the database object:
+
+	my $log = $db->log;
+
+This returns a L<Git::Repository::Log::Iterator> object that starts with the latest
+commit (known as HEAD). See the documentation for that module for more information.
+
+If you want information on a specific commit, you can pass an integer (starting with
+zero) identifying the commit's number (latest commit is zero):
+
+	my $commit_info = $db->log(0); # info for latest commit (HEAD or HEAD~0 in git syntax)
+	$commit_info = $db->log(10); # info for the "10th ago commit" (HEAD~10 in git syntax)
+
+This returns a L<Git::Repository::Log> object.
+
+Unfortunately, you can't get a commit info by the commit ID yet. Hopefully future
+versions will support this.
+
+=head2 DROPPING A DATABASE
+
+Not supported yet.
+
+=head1 WHAT'S NEXT?
+
+I don't know. Pray that it works.

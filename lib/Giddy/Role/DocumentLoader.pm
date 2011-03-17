@@ -16,7 +16,11 @@ Giddy::Role::DocumentLoader - Provides document loading methods for Giddy::Colle
 
 =head1 SYNOPSIS
 
+	# used internally
+
 =head1 DESCRIPTION
+
+This role provides document loading capabilities to L<Giddy::Collection> and L<Giddy::Collection::InMemory>.
 
 =head1 METHODS
 

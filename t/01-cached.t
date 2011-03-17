@@ -14,7 +14,7 @@ has_git();
 
 plan tests => 80;
 
-my $tmpdir = tempdir();#CLEANUP => 1);
+my $tmpdir = tempdir(CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
 
 # create a new Giddy object
@@ -163,14 +163,14 @@ my @f9 = $f9->all;
 is($f9->count, 1, 'Got 1 result as expected when searching by starring => { $all => [Jesse Eisenberg, Woody Harrelson] }');
 is($f9[0]->{title}, 'Zombieland', 'Got the correct result when searching by starring => { $all => [Jesse Eisenberg, Woody Harrelson] }');
 
-my $f10 = $root->find({ regex => { '$type' => 11 } });
+my $f10 = $root->find({ regex => { '$type' => 'regex' } });
 my @f10 = $f10->all;
-is($f10->count, 1, 'Got 1 result as expected when searching by regex => { $type => 11 }');
-is($f10[0]->{_name}, 'one', 'Got the correct result when searching by regex => { $type => 11 }');
+is($f10->count, 1, 'Got 1 result as expected when searching by regex => { $type => regex }');
+is($f10[0]->{_name}, 'one', 'Got the correct result when searching by regex => { $type => regex }');
 
-my $f11 = $root->find({ starring => { '$type' => 4 } });
+my $f11 = $root->find({ starring => { '$type' => 'array' } });
 my @f11 = $f11->all;
-is($f11->count, 3, 'Got 3 results as expected when searching by starring => { $type => 4 }');
+is($f11->count, 3, 'Got 3 results as expected when searching by starring => { $type => array }');
 
 # now let's try some grep searches
 my $g1 = $root->grep('Emma Stone');

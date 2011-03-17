@@ -15,7 +15,11 @@ Giddy::Role::DocumentMatcher - Provides query parsing and document matching for 
 
 =head1 SYNOPSIS
 
+	# used internally
+
 =head1 DESCRIPTION
+
+This role provides document matching capabilities to L<Giddy::Collection> and L<Giddy::Collection::InMemory>.
 
 =head1 METHODS
 
@@ -221,7 +225,7 @@ sub _attribute_matches {
 					foreach (@$term) {
 						return unless $self->_value_in($_, $doc->{$key});
 					}
-				} elsif ($q eq '$type' && $term =~ m/^\d+$/) {
+				} elsif ($q eq '$type' && !ref $term) {
 					if ($term eq 'int') {
 						return unless defined $doc->{$key} && $doc->{$key} =~ m/^\d+$/;
 					} elsif ($term eq 'double') {

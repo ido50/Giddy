@@ -11,9 +11,15 @@ Giddy::Role::DocumentUpdater - Provides document updating for Giddy::Collection
 
 =head1 SYNOPSIS
 
+	# used internally
+
 =head1 DESCRIPTION
 
+This role provides document updating capabilities to L<Giddy::Collection> and L<Giddy::Collection::InMemory>.
+
 =head1 METHODS
+
+=head2 _update_document( \%obj, \%doc )
 
 =cut
 

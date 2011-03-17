@@ -13,7 +13,18 @@ Giddy::Collection::InMemory - An in-memory collection (result of queries).
 
 =head1 SYNOPSIS
 
+	my $in_memory_collection = $collection->find({ _name => qr/wow/ });
+
+	# use $in_memory_collection just like any other Giddy::Collection object
+
 =head1 DESCRIPTION
+
+This class represents in-memory collections. These are created by running C<find()>
+and C<grep()> queries on other collection (either real collections represented by
+L<Giddy::Collection> or other in-memory collections).
+
+Using in-memory collections is I<exactly> the same as using real ones, so refer
+to L<Giddy::Collection> for details. The differences are only internal.
 
 =head1 EXTENDS
 
@@ -24,6 +35,10 @@ L<Giddy::Collection>
 =head2 _documents
 
 An array-reference of the documents in the collection. Not to be used externally.
+
+=head2 _loaded
+
+A hash-ref containing loaded document structures. Not tobe used externally.
 
 =head2 _query
 

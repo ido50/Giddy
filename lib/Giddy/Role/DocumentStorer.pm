@@ -18,7 +18,11 @@ Giddy::Role::DocumentStorer - Provides document storing for Giddy::Collection
 
 =head1 SYNOPSIS
 
+	# used internally
+
 =head1 DESCRIPTION
+
+This role provides document storing capabilities to L<Giddy::Collection> and L<Giddy::Collection::InMemory>.
 
 =head1 METHODS
 
@@ -63,6 +67,10 @@ sub _store_document {
 		$self->_database->mark(File::Spec->catdir($self->path, $filename));
 	}
 }
+
+=head2 _write_file( $fpath, $content, $mode )
+
+=cut
 
 sub _write_file {
 	my ($self, $fpath, $content, $mode) = @_;

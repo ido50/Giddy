@@ -333,7 +333,7 @@ sub remove {
 	my ($self, $query, $options) = @_;
 
 	croak "remove() expects a query string (can be empty) or hash-ref (can also be empty)."
-		if defined $query && ref $query && ref $query ne 'HASH';
+		if defined $query && ref $query && ref $query ne 'HASH' && ref $query ne 'Regexp';
 	croak "remove() expects a hash-ref of options."
 		if $options && ref $options ne 'HASH';
 
@@ -347,7 +347,7 @@ sub remove {
 	# i don't want to unnecessarily load all document just so i could
 	# delete them, so I'm gonna just iterate through the cursor's
 	# _documents array:
-	foreach ($options->{multiple} ? $cursor->_documents->Keys : $cursor->count ? ($cursor->_documents->Keys(0)) : ()) {
+	foreach ($options->{just_one} && $cursor->count ? ($cursor->_documents->Keys(0)) : $cursor->count ? $cursor->_documents->Keys : ()) {
 		my $t = $cursor->_documents->FETCH($_);
 		if ($t eq 'file') {
 			# get the file's name and search path
@@ -528,6 +528,7 @@ sub all {
 	while ($self->has_next) {
 		push(@results, $self->next);
 	}
+	$self->rewind;
 	return @results;
 }
 
