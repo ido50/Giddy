@@ -1,16 +1,64 @@
 NAME
-    Giddy - Schemaless, versioned media/document database based on Git.
+    Giddy - Schema-less, versioned media/document database based on Git.
 
 SYNOPSIS
+            use Giddy;
+
+            my $giddy = Giddy->new;
+
+            my $db = $giddy->get_database('/path/to/database');
+
 DESCRIPTION
-ATTRIBUTES
-  _futil
-    A File::Util object to be used by the module. Automatically created.
+    WARNING: THIS IS ALPHA SOFTWARE, RELEASED FOR TESTING PURPOSES ONLY. DO
+    NOT USE IT ON A PRODUCTION ENVIRONMENT YET. IT'S INCOMPLETE, BUG-RIDDEN,
+    AND WILL RUN OVER YOUR CAT.
+
+    Giddy is a schema-less (as in NoSQL), versioned database system built on
+    top of Git. A database in Giddy is simply a Git repository, providing
+    the database with automatic, comprehensive versioning and distributive
+    capabilities.
+
+    As opposed to most modern database systems, Giddy aims to be human
+    editable. One can create/edit/delete database entries with nothing but a
+    text editor and some simple git commands (YAML has been chosen as the
+    serialization format since YAML is well suited as a human editable
+    format; however, JSON support is planned). This module provides an API
+    for usage by Perl applications.
+
+    Main database features (not all features implemented yet):
+
+    *   Human editable
+
+    *   Multiple version concurrency
+
+    *   Concurrent transactions
+
+    *   Distributed peers
+
+    *   Disconnected operation
+
+    *   Consistent UTF-8 encoding
+
+    *   Other fancy words
+
+    STOP: This document (and all other module documentation provided with
+    the distribution) are for reference purposes only. Please read
+    Giddy::Manual before using Giddy to learn about the database system and
+    how to use it.
 
 CLASS METHODS
   new()
+    Creates a new instance of this module.
+
 OBJECT METHODS
   get_database( $path )
+    Returns a Giddy::Database object tied to a Git repository located on the
+    file system. Please provide full path names to prevent potential
+    problems.
+
+    If the path doesn't exist, Giddy will attempt to create it and
+    initialize it as a Git repository.
+
 AUTHOR
     Ido Perlmuter, "<ido at ido50.net>"
 
@@ -45,7 +93,7 @@ SUPPORT
         <http://search.cpan.org/dist/Giddy/>
 
 LICENSE AND COPYRIGHT
-    Copyright 2010 Ido Perlmuter.
+    Copyright 2011 Ido Perlmuter.
 
     This program is free software; you can redistribute it and/or modify it
     under the terms of either: the GNU General Public License as published
