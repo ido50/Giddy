@@ -189,7 +189,7 @@ sub grep {
 			push(@cmd, '-e', $_);
 		}
 	} else {
-		push(@cmd, '-e', '');
+		push(@cmd, '');
 	}
 
 	push(@cmd, { cwd => File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath) }) if $self->_spath;

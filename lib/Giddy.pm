@@ -1,5 +1,9 @@
 package Giddy;
 
+BEGIN {
+	use version 0.77; our $VERSION = version->declare("v0.11.0");
+}
+
 # ABSTRACT: Schema-less, versioned media/document database based on Git.
 
 use Any::Moose;
