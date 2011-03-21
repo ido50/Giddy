@@ -111,7 +111,7 @@ on to L</"DATABASE STRUCTURE">.
 
 Giddy only supports UTF-8 and nothing else! All files created by Giddy
 are UTF-8 encoded. All data I<written> to these files is automatically
-UTF-8 encoded, wile all data I<read> from these files is automatically
+UTF-8 encoded, while all data I<read> from these files is automatically
 UTF-8 decoded. When creating/manilpulating documents by hand (as said,
 human editing is supported), one must be careful to create the files in
 UTF-8.
@@ -169,7 +169,8 @@ than its body, then it won't have a YAML section, just the text section,
 without the double newline characters before it. This is very similar to
 HTTP requests/responses. This type of document, however, is limited, since
 it cannot have binary attributes and cannot have child collections; it is
-mostly provided for its convenience (very human editable) and since it 
+mostly provided for its convenience (very human editable) and its ability
+to make a Giddy database more website-like.
 
 =item 2. The normal way: A directory-based document, holding a YAML file
 called 'attributes.yaml' (required) which holds all the document's textual/serializable
@@ -182,12 +183,12 @@ or more correctly sub-collections. These hold child directories of the
 document. You can think of a document's sub-collection as another attribute
 of the document.
 
+=back
+
 Documents in Giddy don't have an ID attribute. Every document has a '_name'
 attribute which is simply the document's file name (or directory name in
 case it's a directory-based document). This file name is unique in the
 collection, and thus can serve as the documents ID.
-
-=back
 
 I aim to add support for directories which don't contain documents at all,
 but only "static files", which will make it suitable for binary file storage.
