@@ -1,6 +1,10 @@
 Revision history for Giddy
 
 {{$NEXT}}
+	- Added support for static file directories
+	- Removed unnecessary use of File::Util in Giddy::Collection
+	- Refixed bug with empty-expression greps, this time by simply calling find()
+	  when query string is empty
 
 v0.11.0   2011-03-22 00:38:52 Asia/Jerusalem
 	- Fixed bug with empty-expression greps

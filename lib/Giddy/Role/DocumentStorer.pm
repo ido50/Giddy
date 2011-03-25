@@ -80,7 +80,7 @@ sub _write_file {
 
 	open(FILE, '>', $fpath)
 		|| croak "Can't open file $fpath for writing: $!";
-	flock(FILE, LOCK_EX);
+	flock(FILE, 2);
 	print FILE $content;
 	close(FILE)
 		|| carp "Error closing file $fpath: $!";

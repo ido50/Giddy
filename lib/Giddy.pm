@@ -1,7 +1,7 @@
 package Giddy;
 
 BEGIN {
-	use version 0.77; our $VERSION = version->declare("v0.11.0");
+	use version 0.77; our $VERSION = version->declare("v0.11.1");
 }
 
 # ABSTRACT: Schema-less, versioned media/document database based on Git.
@@ -10,7 +10,6 @@ use Any::Moose;
 use namespace::autoclean;
 
 use Carp;
-use File::Spec;
 use Giddy::Database;
 
 =head1 NAME

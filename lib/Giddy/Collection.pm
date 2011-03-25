@@ -6,9 +6,10 @@ use Any::Moose;
 use namespace::autoclean;
 
 use Carp;
+use File::Path qw/make_path/;
 use File::Spec;
-use File::Util;
 use Giddy::Collection::InMemory;
+use Giddy::StaticDirectory;
 use Tie::IxHash;
 
 has 'path' => (is => 'ro', isa => 'Str', default => '/');
@@ -175,6 +176,8 @@ sub grep {
 	$query = [$query] if !ref $query;
 	$opts ||= {};
 
+	return $self->find('', $opts) unless scalar @$query;
+
 	my $coll = Giddy::Collection::InMemory->new(
 		path => $self->path,
 		_database => $self->_database,
@@ -184,12 +187,8 @@ sub grep {
 	my @cmd = ('grep', '-I', '--name-only', '--max-depth', 1, '--cached');
 	push(@cmd, '--all-match') unless $opts->{'or'}; # that's how we do an 'and' search'
 
-	if (scalar @$query) {
-		foreach (@$query) {
-			push(@cmd, '-e', $_);
-		}
-	} else {
-		push(@cmd, '');
+	foreach (@$query) {
+		push(@cmd, '-e', $_);
 	}
 
 	push(@cmd, { cwd => File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath) }) if $self->_spath;
@@ -670,6 +669,72 @@ sub last {
 }
 
 =head2 COLLECTION OPERATIONS
+
+=head3 list_static_dirs()
+
+Returns a list of all the static-file directories in the collection, if any.
+
+=cut
+
+sub list_static_dirs {
+	my $self = shift;
+
+	my @dirs;
+	foreach (sort $self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:')) {
+		# is this a directory?
+		my $t = $self->_database->_repo->run('cat-file', '-t', 'HEAD:'.File::Spec->catdir($self->_spath, $_));
+		if ($t eq 'tree') {
+			# does it have a .static file?
+			if (grep {/^\.static$/} $self->_database->_repo->run('ls-tree', '--name-only', 'HEAD:'.File::Spec->catdir($self->_spath, $_))) {
+				push(@dirs, $_);
+			}
+		}
+	}
+
+	return @dirs;
+}
+
+=head3 get_static_dir( $name )
+
+Returns a L<Giddy::StaticDirectory> object for a directory of static files named
+C<$name>, residing in the collection's directory. If the directory does not exist,
+it will be created and marked as a static directory with an empty '.static' file.
+If the directory exists but is not a static directory (or a file named C<$name>
+exists), this method will croak.
+
+=cut
+
+sub get_static_dir {
+	my ($self, $name) = @_;
+
+	croak "You must provide the name of the static directory to load."
+		unless $name;
+
+	# try to find such a directory
+	if (grep {$_ eq $name} $self->_database->_repo->run('ls-tree', '--name-only', $self->_spath ? 'HEAD:'.$self->_spath : 'HEAD:')) {
+		my $t = $self->_database->_repo->run('cat-file', '-t', 'HEAD:'.File::Spec->catdir($self->_spath, $name));
+		if ($t eq 'tree') {
+			# does it have a .static file?
+			if (grep {/^\.static$/} $self->_database->_repo->run('ls-tree', '--name-only', 'HEAD:'.File::Spec->catdir($self->_spath, $name))) {
+				return Giddy::StaticDirectory->new(path => File::Spec->catdir($self->path, $name), _collection => $self);
+			} else {
+				croak "Directory $name already exists in ".$self->path." but isn't a static-file directory.";
+			}
+		} elsif ($t eq 'blob') {
+			croak "A file named $name exists in the collection, there cannot be a static-file directory named like that as well.";
+		}
+	}
+
+	# okay, let's create the directory
+	make_path(File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath, $name), { mode => 0775 });
+	open(FILE, ">:utf8", File::Spec->catfile($self->_database->_repo->work_tree, $self->_spath, $name, '.static'))
+		|| croak "Can't create .static file in collection: $!";
+	close FILE;
+	chmod(0664, File::Spec->catfile($self->_database->_repo->work_tree, $self->_spath, $name, '.static'));
+	$self->_database->mark(File::Spec->catdir($self->path, $name));
+
+	return Giddy::StaticDirectory->new(path => File::Spec->catdir($self->path, $name), _collection => $self);
+}
 
 =head3 drop()
 

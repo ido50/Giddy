@@ -12,9 +12,9 @@ use Test::Git;
 
 has_git();
 
-plan tests => 80;
+plan tests => 83;
 
-my $tmpdir = tempdir(CLEANUP => 1);
+my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
 
 # create a new Giddy object
@@ -258,5 +258,11 @@ ok($two->{_name} eq 'two', 'two is back again');
 $db->undo;
 $two = $root->find_one('two');
 ok(!defined $two, 'two not there yet again');
+
+# let's play around with static-file directories
+my $stat = $root->get_static_dir('pics');
+ok($stat, 'Got a static-file directory object');
+is($stat->path, '/pics', 'Static dir obj has correct path');
+ok(-e File::Spec->catfile($db->_repo->work_tree, $stat->_spath, '.static'), '.static file exists');
 
 done_testing();
