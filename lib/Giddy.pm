@@ -1,9 +1,5 @@
 package Giddy;
 
-BEGIN {
-	use version 0.77; our $VERSION = version->declare("v0.11.1");
-}
-
 # ABSTRACT: Schema-less, versioned media/document database based on Git.
 
 use Any::Moose;
@@ -11,6 +7,9 @@ use namespace::autoclean;
 
 use Carp;
 use Giddy::Database;
+
+our $VERSION = "0.012";
+$VERSION = eval $VERSION;
 
 =head1 NAME
 
@@ -22,7 +21,7 @@ Giddy - Schema-less, versioned media/document database based on Git.
 
 	my $giddy = Giddy->new;
 
-	my $db = $giddy->get_database('/path/to/database');
+	my $db = $giddy->getdb('/path/to/database');
 
 =head1 DESCRIPTION
 
@@ -92,7 +91,7 @@ sub get_database {
 		unless $path;
 
 	# is this an existing database or a new one?
-	if (-d $path && -d File::Spec->catdir($path, '.git')) {
+	if (-d $path && -d "${path}/.git") {
 		# existing
 		return Giddy::Database->new(_repo => Git::Repository->new(work_tree => $path));
 	} else {

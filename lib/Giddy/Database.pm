@@ -6,10 +6,12 @@ use Any::Moose;
 use namespace::autoclean;
 
 use Carp;
-use File::Path qw/make_path/;
 use Git::Repository;
 use Git::Repository::Log::Iterator;
 use Giddy::Collection;
+
+our $VERSION = "0.012";
+$VERSION = eval $VERSION;
 
 =head1 NAME
 
@@ -17,13 +19,17 @@ Giddy::Database - A Giddy database.
 
 =head1 SYNOPSIS
 
-	my $db = $giddy->get_database('/path/to/database');
+	my $db = $giddy->getdb('/path/to/database');
 
 =head1 DESCRIPTION
 
 This class represents Giddy databases. Aside from providing you with the ability
 to create and get collections from the database, it provides methods which are
 global to the database, like commit changes, undoing changes, etc.
+
+=head1 CONSUMES
+
+L<Giddy::Role::PathAnalyzer>
 
 =head1 ATTRIBUTES
 
@@ -33,15 +39,18 @@ A L<Git::Repository> object, tied to the git repository of the Giddy database.
 This is a required attribute. Not meant to be used externally, but knock yourself
 out if you feel the need to run specific Git commands.
 
-=head2 _marked
+=head2 _staged
 
-A list of paths to add to the next commit job. Automatically created.
+A list of paths staged (added) to the next commit job. Automatically created.
 
 =cut
 
 has '_repo' => (is => 'ro', isa => 'Git::Repository', required => 1);
 
-has '_marked' => (is => 'ro', isa => 'ArrayRef[Str]', default => sub { [] }, writer => '_set_marked');
+has '_staged' => (is => 'ro', isa => 'ArrayRef[Str]', default => sub { [] }, writer => '_set_staged');
+
+with	'Giddy::Role::PathAnalyzer',
+	'Giddy::Role::PathMaker';
 
 =head1 OBJECT METHODS
 
@@ -57,25 +66,21 @@ to the database's full path, but with a starting slash.
 sub get_collection {
 	my ($self, $path) = @_;
 
-	$path ||= '/';
+	$path ||= '';
 
 	# remove trailing slash from path, if exists
-	unless ($path eq '/') {
-		my $spath = $path;
-		# remove trailing slash (if exists)
-		$spath =~ s!/$!!;
-		# remove starting slash (if exists)
-		$spath =~ s!^/!!;
+	if ($path ne '') {
+		croak "Path of collection to get must not start with a slash."
+			if $path =~ m!^/!;
 
-		if (-d File::Spec->catdir($self->_repo->work_tree, $spath) && -e File::Spec->catdir($self->_repo->work_tree, $spath, 'attributes.yaml')) {
-			croak "The collection path exists in the database as a document directory, can't load it as a collection.";
-		}
+		croak "The collection path exists in the database but is not a collection."
+			if $self->is_document_dir($path) || $self->is_static_dir($path);
 
 		# create the collection directory (unless it already exists)
-		make_path(File::Spec->catdir($self->_repo->work_tree, $spath), { mode => 0775 });
+		$self->create_dir($path);
 	}
 
-	return Giddy::Collection->new(_database => $self, path => $path);
+	return Giddy::Collection->new(db => $self, path => $path);
 }
 
 =head2 commit( [$commit_msg] )
@@ -88,18 +93,18 @@ use a default commit message listing the number of changes performed.
 sub commit {
 	my ($self, $msg) = @_;
 
-	$msg ||= "Commited ".scalar(@{$self->_marked})." changes";
+	$msg ||= "Commited ".scalar(@{$self->_staged})." changes";
 
 	# commit
 	$self->_repo->run('commit', '-m', $msg);
 
 	# clear marked list
-	$self->_set_marked([]);
+	$self->_set_staged([]);
 
 	return 1;
 }
 
-=head2 mark( $path | @paths )
+=head2 stage( @paths )
 
 Marks files/directories as to be staged. Mostly called automatically by
 C<new_collection()>, C<new_document()>, etc., but you can use it if you need to.
@@ -107,33 +112,28 @@ Paths are relative to database's path and may contain starting slashes.
 
 =cut
 
-sub mark {
+sub stage {
 	my ($self, @paths) = @_;
 
 	croak "You must provide the relative path of the file/directory to stage."
 		unless scalar @paths;
 
 	foreach (@paths) {
-		# remove trailing slash from path, if exists
-		s!/$!!;
-		# remove starting slash from path, if exists
-		s!^/!!;
-		
 		# stage the file
 		$self->_repo->run('add', $_);
 	}
 
 	# store files in object
-	my $marked = $self->_marked;
-	push(@$marked, @paths);
-	$self->_set_marked($marked);
+	my $staged = $self->_staged;
+	push(@$staged, @paths);
+	$self->_set_staged($staged);
 }
 
 =head2 find( [ $path, [\%options] ] )
 
 Searches the Giddy repository for documents that match the provided
 path. The path has to be relative to the repository's root directory, which
-is considered '/'. This string will be used if C<$path> is not provided. This is
+is considered the empty string. This string will be used if C<$path> is not provided. This is
 a convenience method for finding documents by path. See L<Giddy::Collection> and
 L<Giddy::Manual/"FULL PATH FINDING"> for more information.
 
@@ -143,16 +143,17 @@ sub find {
 	my ($self, $path, $opts) = @_;
 
 	croak "find() expected a hash-ref of options, but received ".ref($opts)
-		if $opts && ref $opts ne 'HASH';
+		if $opts && (!ref $opts || ref $opts ne 'HASH');
 
 	$opts ||= {};
 
 	# in which directory are we searching?
-	my ($dir, $name) = ('/', '');
-	if ($path) {
-		($name) = ($path =~ m!/([^/]+)$!);
-		$name ||= $path;
-		$dir = $` || '/';
+	my ($dir, $name) = ('', '');
+	if ($path && $path =~ m!/([^/]+)$!) {
+		$name = $1;
+		$dir = $`;
+	} else {
+		$name = $path;
 	}
 
 	return $self->get_collection($dir)->find($name, $opts);

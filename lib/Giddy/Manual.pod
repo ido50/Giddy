@@ -246,7 +246,7 @@ No parameters or attributes are required.
 As in MongoDB, Giddy doesn't care if a database already exists or not. The
 syntax for creating/connecting to a database is the same:
 
-	my $db = $giddy->get_database('/path/to/database');
+	my $db = $giddy->getdb('/path/to/database');
 
 If the database doesn't exist yet, Giddy will attempt to create it and
 initialize it as a Git repository.
@@ -855,9 +855,9 @@ You don't have to provide a commit message, but do yourself a favor and do so. I
 you don't provide one, Giddy will use a commit message like "Commited 5 changes".
 
 If for some reason you need to (for example for adding binary attributes), you can
-manually stage files with the C<mark()> method:
+manually stage files with the C<stage()> method:
 
-	$db->mark('/index.html', '/collection/article.html', '/collection/some_document_directory');
+	$db->stage('/index.html', '/collection/article.html', '/collection/some_document_directory');
 
 =head2 UNDOING STUFF
 

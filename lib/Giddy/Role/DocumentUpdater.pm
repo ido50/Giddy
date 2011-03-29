@@ -5,6 +5,9 @@ use namespace::autoclean;
 
 use Carp;
 
+our $VERSION = "0.012";
+$VERSION = eval $VERSION;
+
 =head1 NAME
 
 Giddy::Role::DocumentUpdater - Provides document updating for Giddy::Collection

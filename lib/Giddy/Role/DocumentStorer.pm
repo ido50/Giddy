@@ -4,13 +4,13 @@ use Any::Moose 'Role';
 use namespace::autoclean;
 
 use Carp;
-use Fcntl qw/:flock/;
-use File::Path qw/make_path/;
 use YAML::XS;
 
-requires 'path';
-requires '_database';
-requires '_spath';
+our $VERSION = "0.012";
+$VERSION = eval $VERSION;
+
+requires 'db';
+requires '_path_to';
 
 =head1 NAME
 
@@ -24,6 +24,8 @@ Giddy::Role::DocumentStorer - Provides document storing for Giddy::Collection
 
 This role provides document storing capabilities to L<Giddy::Collection> and L<Giddy::Collection::InMemory>.
 
+Requires the attributes 'db' and '_path_to' to be implemented by consuming classes.
+
 =head1 METHODS
 
 =head2 _store_document( $filename, \%attributes )
@@ -36,9 +38,8 @@ sub _store_document {
 	# don't allow the _name attribute
 	delete $attrs->{_name};
 
+	my $fpath = $self->_path_to($filename);
 	if (exists $attrs->{_body}) {
-		my $fpath = File::Spec->catfile($self->_database->_repo->work_tree, $self->_spath, $filename);
-
 		my $body = delete $attrs->{_body};
 
 		my $content = '';
@@ -48,43 +49,19 @@ sub _store_document {
 		$content =~ s/^---\n//;
 
 		# create the document
-		$self->_write_file($fpath, $content, 0664);
-
-		# mark the document for staging
-		$self->_database->mark(File::Spec->catfile($self->path, $filename));
+		$self->db->create_file($fpath, $content, 0664);
 	} else {
-		my $fpath = File::Spec->catdir($self->_database->_repo->work_tree, $self->_spath, $filename);
-
 		# create the document directory
-		make_path($fpath, { mode => 0755 });
+		$self->db->create_dir($fpath);
 
 		# create the attributes file
 		my $yaml = Dump($attrs);
 		$yaml =~ s/^---\n//;
-		$self->_write_file(File::Spec->catfile($fpath, 'attributes.yaml'), $yaml, 0664);
-
-		# mark the document for staging
-		$self->_database->mark(File::Spec->catdir($self->path, $filename));
+		$self->db->create_file($fpath.'/attributes.yaml', $yaml, 0664);
 	}
-}
 
-=head2 _write_file( $fpath, $content, $mode )
-
-=cut
-
-sub _write_file {
-	my ($self, $fpath, $content, $mode) = @_;
-
-	# there's no need to open the output file in binary :utf-8 mode,
-	# as the YAML Dump() function returns UTF-8 encoded data (so it seems)
-
-	open(FILE, '>', $fpath)
-		|| croak "Can't open file $fpath for writing: $!";
-	flock(FILE, 2);
-	print FILE $content;
-	close(FILE)
-		|| carp "Error closing file $fpath: $!";
-	chmod($mode, $fpath);
+	# stage the document
+	$self->db->stage($fpath);
 }
 
 =head1 AUTHOR

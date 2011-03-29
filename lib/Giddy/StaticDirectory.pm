@@ -6,7 +6,9 @@ use Any::Moose;
 use namespace::autoclean;
 
 use Carp;
-use File::Spec;
+
+our $VERSION = "0.012";
+$VERSION = eval $VERSION;
 
 =head1 NAME
 
@@ -30,7 +32,7 @@ also considered a static directory, and they are infinitely nestable.
 
 The relative path of the directory. Always has a starting slash. Required.
 
-=head2 _collection
+=head2 coll
 
 The L<Giddy::Collection> object the directory belongs to. This is even if the
 directory is not a direct child of the collection, but some descendant of it.
@@ -40,7 +42,7 @@ Required.
 
 has 'path' => (is => 'ro', isa => 'Str', required => 1);
 
-has '_collection' => (is => 'ro', isa => 'Giddy::Collection', required => 1);
+has 'coll' => (is => 'ro', isa => 'Giddy::Collection', required => 1);
 
 =head1 OBJECT METHODS
 
@@ -53,15 +55,7 @@ Returns a list of all static files in the directory.
 sub list_files {
 	my $self = shift;
 
-	my @files;
-	foreach ($self->_collection->_database->_repo->run('ls-tree', '--name-only', 'HEAD:'.$self->_spath)) {
-		my $t = $self->_database->_repo->run('cat-file', '-t', 'HEAD:'.File::Spec->catfile($self->_spath, $_));
-		if ($t eq 'blob') {
-			push(@files, $t);
-		}
-	}
-
-	return @files;
+	return $self->coll->db->list_files($self->path);
 }
 
 =head2 list_dirs()
@@ -74,15 +68,7 @@ static-file directories as well.
 sub list_dirs {
 	my $self = shift;
 
-	my @dirs;
-	foreach ($self->_collection->_database->_repo->run('ls-tree', '--name-only', 'HEAD:'.$self->_spath)) {
-		my $t = $self->_database->_repo->run('cat-file', '-t', 'HEAD:'.File::Spec->catfile($self->_spath, $_));
-		if ($t eq 'tree') {
-			push(@dirs, $t);
-		}
-	}
-
-	return @dirs;
+	return $self->coll->db->list_dirs($self->path);
 }
 
 =head3 get_static_dir( $name )
@@ -99,33 +85,24 @@ sub get_static_dir {
 	croak "You must provide the name of the static directory to load."
 		unless $name;
 
+	my $fpath = $self->path.'/'.$name;
+
 	# try to find such a directory
-	if (grep {$_ eq $name} $self->_database->_repo->run('ls-tree', '--name-only', 'HEAD:'.$self->_spath)) {
-		my $t = $self->_collection->_database->_repo->run('cat-file', '-t', 'HEAD:'.File::Spec->catdir($self->_spath, $name));
-		if ($t eq 'tree') {
-			return Giddy::StaticDirectory->new(path => File::Spec->catdir($self->path, $name), _collection => $self);
-		} elsif ($t eq 'blob') {
-			croak "A file named $name exists in the directory, there cannot be a directory named like that as well.";
+	if ($self->coll->db->path_exists($fpath)) {
+		if ($self->coll->db->is_directory($fpath)) {
+			# we don't check if the directory is a static directory, since by
+			# definition a descendant of a static directory is a static directory
+			return Giddy::StaticDirectory->new(path => $fpath, _collection => $self);
+		} else {
+			croak "A file named $name exists in the ".$self->path." static directory, there cannot be a directory named like that as well.";
 		}
+	} else {
+		# okay, let's create the directory
+		$self->coll->db->create_dir($fpath);
+		$self->coll->db->stage($fpath);
+
+		return Giddy::StaticDirectory->new(path => $fpath, _collection => $self);
 	}
-
-	# okay, let's create the directory
-	make_path(File::Spec->catdir($self->_repo->work_tree, $self->_spath, $name), { mode => 0775 });
-	$self->mark(File::Spec->catdir($self->path, $name));
-
-	return Giddy::StaticDirectory->new(path => File::Spec->catdir($self->path, $name), _collection => $self);
-}
-
-=head1 INTERNAL METHODS
-
-The following methods are only to be used internally.
-
-=head2 _spath()
-
-=cut
-
-sub _spath {
-	($_[0]->path =~ m!^/(.+)$!)[0];
 }
 
 =head1 AUTHOR

@@ -8,7 +8,11 @@ use Encode;
 use Try::Tiny;
 use YAML::XS;
 
-requires '_database';
+our $VERSION = "0.012";
+$VERSION = eval $VERSION;
+
+requires 'db';
+requires '_path_to';
 
 =head1 NAME
 
@@ -22,19 +26,18 @@ Giddy::Role::DocumentLoader - Provides document loading methods for Giddy::Colle
 
 This role provides document loading capabilities to L<Giddy::Collection> and L<Giddy::Collection::InMemory>.
 
+Requires the attributes 'db' and '_path_to' to be implemented by consuming classes.
+
 =head1 METHODS
 
-=head3 _load_document_file( $path )
+=head3 _load_document_file( $name )
 
 =cut
 
 sub _load_document_file {
-	my ($self, $path) = @_;
+	my ($self, $name) = @_;
 
-	my $spath = $path;
-	$spath =~ s!^/!!;
-
-	my $content = ''.$self->_database->_repo->run('show', 'HEAD:'.$spath);
+	my $content = ''.$self->db->_repo->run('show', 'HEAD:'.$self->_path_to($name));
 
 	return unless $content;
 
@@ -48,38 +51,36 @@ sub _load_document_file {
 	return try {
 		my $doc = Load("---\n$yaml");
 		$doc->{_body} = $body;
-		$doc->{_name} = ($path =~ m!/([^/]+)$!)[0];
+		$doc->{_name} = $name;
 		return $doc;
 	} catch {
-		return { _body => $body, _name => ($path =~ m!/([^/]+)$!)[0] };
+		return { _body => $body, _name => $name };
 	};
 }
 
-=head3 _load_document_dir( $path, [ $skip_binary ] )
+=head3 _load_document_dir( $name, [ $skip_binary ] )
 
 =cut
 
 sub _load_document_dir {
-	my ($self, $path, $skip_bin) = @_;
-
-	my $spath = $path;
-	$spath =~ s!^/!!;
+	my ($self, $name, $skip_bin) = @_;
 
 	my $doc;
 
 	# try to load the attributes
-	my $yaml = $self->_database->_repo->run('show', 'HEAD:'.File::Spec->catfile($spath, 'attributes.yaml'));
-	croak "Can't find/read attributes.yaml file of document $path." unless $yaml;
+	my $yaml = $self->db->_repo->run('show', 'HEAD:'.$self->_path_to($name, 'attributes.yaml'));
+	croak "Can't find/read attributes.yaml file of document $name." unless $yaml;
 	$doc = try { Load($yaml) } catch { {} };
 
 	# try to load binary files (unless we're skipping binary)
 	unless ($skip_bin) {
-		foreach (grep {!/^attributes\.yaml$/} $self->_database->_repo->run('ls-tree', '--name-only', "HEAD:".$spath)) {
-			$doc->{$_} = File::Spec->catfile($path, $_);
+		foreach (grep {!/^attributes\.yaml$/} $self->db->_repo->run('ls-tree', '--name-only', "HEAD:".$self->_path_to($name))) {
+			$doc->{$_} = $self->_path_to($name, $_);
 		}
 	}
 
-	$doc->{_name} = ($path =~ m!/([^/]+)$!)[0] if $doc && scalar keys %$doc;
+	$doc->{_name} = $name
+		if $doc && scalar keys %$doc;
 
 	return $doc;
 }

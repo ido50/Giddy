@@ -5,14 +5,14 @@ use strict;
 use utf8;
 
 use File::Temp qw/tempdir/;
-use File::Spec;
 use Giddy;
 use Test::More;
 use Test::Git;
+use Try::Tiny;
 
 has_git();
 
-plan tests => 83;
+plan tests => 86;
 
 my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -26,49 +26,49 @@ my $db = $g->get_database($tmpdir);
 is(ref($db->_repo), 'Git::Repository', 'Created a new Giddy database');
 
 # create a Giddy collection
-my $coll = $db->get_collection('/collection');
-is($coll->path, '/collection', 'Created a new Giddy collection');
-ok(-d File::Spec->catdir($tmpdir, 'collection'), 'New collection has a directory in the filesystem');
+my $coll = $db->get_collection('collection');
+is($coll->path, 'collection', 'Created a new Giddy collection');
+ok(-d $tmpdir.'/collection', 'New collection has a directory in the filesystem');
 
 # create some articles
-my $html_p = $coll->insert('index.html', { _body => '<h1>Giddy</h1>', user => 'gitguy', date => '12-12-12T12:12:12+03:00' });
-is($html_p, '/collection/index.html', 'Created an HTML article');
+my $html_n = $coll->insert('index.html', { _body => '<h1>Giddy</h1>', user => 'gitguy', date => '12-12-12T12:12:12+03:00' });
+is($html_n, 'index.html', 'Created an HTML article');
 
-my $json_p = $coll->insert('index.json', { _body => '{ how: "so" }' });
-ok(-e File::Spec->catdir($tmpdir, 'collection', 'index.json'), 'Created a JSON article');
+my $json_n = $coll->insert('index.json', { _body => '{ how: "so" }' });
+ok(-e $tmpdir.'/collection/index.json', 'Created a JSON article');
 
-my $text_p = $coll->insert('asdf.txt', { _body => 'asdf', asdf => 'AsDf' });
-is($text_p, '/collection/asdf.txt', 'Create a text article');
+my $text_n = $coll->insert('asdf.txt', { _body => 'asdf', asdf => 'AsDf' });
+is($text_n, 'asdf.txt', 'Create a text article');
 
 # commit the changes
 $db->commit( "Testing a commit" );
 
 # take a look at the contents of the articles
-my $html = $db->find_one($html_p);
+my $html = $db->find_one("collection/$html_n");
 ok($html, 'Found HTML document');
 is($html->{_body}, '<h1>Giddy</h1>', 'HTML content OK');
 is($html->{user}, 'gitguy', 'HTML attributes OK');
 
-my $json = $db->find_one($json_p);
+my $json = $db->find_one("collection/$json_n");
 ok($json, 'Found JSON document');
 is($json->{_body}, '{ how: "so" }', 'JSON content OK');
 
-my $text = $db->find_one($text_p);
+my $text = $coll->find_one($text_n);
 ok($text, 'Found text document');
 is($text->{_name}, 'asdf.txt', 'Text document loaded OK');
 
 # get the root collection
 my $root = $db->get_collection;
-is($root->path, '/', 'Root collection received OK');
+is($root->path, '', 'Root collection received OK');
 
 # create a new document
-my $doc_p = $root->insert('about', { subject => 'About Giddy', text => '<p>This is stupid</p>', date => '12-12-12T12:15:56+03:00' });
-is($doc_p, '/about', 'Document created OK');
-ok(-d File::Spec->catdir($tmpdir, 'about'), 'Document has a directory in the filesystem');
-ok(-e File::Spec->catdir($tmpdir, 'about', 'attributes.yaml'), 'Document has an attributes.yaml file');
+my $doc_n = $root->insert('about', { subject => 'About Giddy', text => '<p>This is stupid</p>', date => '12-12-12T12:15:56+03:00' });
+is($doc_n, 'about', 'Document created OK');
+ok(-d $tmpdir.'/about', 'Document has a directory in the filesystem');
+ok(-e $tmpdir.'/about/attributes.yaml', 'Document has an attributes.yaml file');
 
 # search for the document before commiting
-my $c1 = $db->find($doc_p);
+my $c1 = $db->find($doc_n);
 is($c1->count, 0, 'Document cannot be found before commiting');
 
 # add a fake binary file to the document
@@ -77,17 +77,17 @@ print FILE "ASDF";
 close FILE;
 
 # commit the changes
-$db->mark('about/binary');
+$db->stage('about/binary');
 $db->commit( "Testing another commit" );
 
 # now find the document
 my $doc = $root->find_one('about');
 ok($doc, 'Document now found');
-is($doc->{'subject'}, 'About Giddy', 'Document loaded OK');
-is($doc->{'binary'}, '/about/binary', 'Document has binary reference OK');
+is($doc->{subject}, 'About Giddy', 'Document loaded OK');
+is($doc->{binary}, 'about/binary', 'Document has binary reference OK');
 
 # search for some stuff
-my $c2 = $db->find('/collection/index.html');
+my $c2 = $db->find('collection/index.html');
 is($c2->count, 1, 'Article found OK');
 
 # grep for some stuff
@@ -95,19 +95,19 @@ my $g0 = $coll->grep_one('how');
 ok($g0, 'Found something when grepping for "how" in collection');
 is($g0->{_name}, 'index.json', 'Found index.json when grepping for "how" in collection');
 
+# let's try to load the collection as a static directory and make sure it fails
+my $failed0 = try { $root->get_static_dir('collection') } catch { 'failed' };
+is($failed0, 'failed', "Can't load collection as a static-file directory");
+
 # drop the collection
 $coll->drop;
-ok(!-e File::Spec->catdir($tmpdir, 'collection'), 'Collection dropped OK');
+ok(!-e $tmpdir.'/collection', 'Collection dropped OK');
 
 $db->commit('Dropped a collection');
 
 # try to drop the root collection (should fail)
-eval { $root->drop; };
-ok($@ && $@ =~ m/You cannot drop the root collection/, 'Root collection cannot be dropped');
-
-# try to load the about article as a collection (should fail)
-eval { $db->get_collection('about'); };
-ok($@ && $@ =~ m/The collection path exists in the database as a document directory/, "Can't load a document as a collection");
+my $dropped = try { $root->drop } catch { 'failed' };
+is($dropped, 'failed', 'Root collection cannot be dropped');
 
 # create some documents
 $root->insert('one', { subject => 'Lorem Ipsum', text => 'Dolor Sit Amet', regex => qr/^asdf$/ });
@@ -205,13 +205,13 @@ is($f14->count, 5, 'Found 5 documents as expected when searching by _name => { $
 
 # let's sort some stuff
 my $f15 = $root->find->sort([ 'imdb_score' => -1, '_name' => 1 ]);
-is_deeply([$f15->_documents->Keys], ['/four', '/two', '/about', '/five', '/one', '/three'], 'Documents properly sorted in f15');
+is_deeply([$f15->_documents->Keys], ['four', 'two', 'about', 'five', 'one', 'three'], 'Documents properly sorted in f15');
 
 my $f16 = $root->find->sort([ 'imdb_score' => 1, '_name' => -1 ]);
-is_deeply([$f16->_documents->Keys], ['/two', '/four', '/three', '/one', '/five', '/about'], 'Documents properly sorted in f16');
+is_deeply([$f16->_documents->Keys], ['two', 'four', 'three', 'one', 'five', 'about'], 'Documents properly sorted in f16');
 
 my $f17 = $root->find->sort(Tie::IxHash->new('year' => -1, 'title' => 1));
-is_deeply([$f17->_documents->Keys], ['/two', '/four', '/five', '/about', '/one', '/three'], 'Documents properly sorted in f17');
+is_deeply([$f17->_documents->Keys], ['two', 'four', 'five', 'about', 'one', 'three'], 'Documents properly sorted in f17');
 
 # try to update a document
 my $u1 = $root->update({ starring => 'Jesse Eisenberg' }, { '$pull' => { starring => 'Jesse Eisenberg' }, '$push' => { starring => 'Jesse Fakerberg' } }, { multiple => 1 });
@@ -236,14 +236,22 @@ my $g5 = $root->find({ imdb_score => { '$exists' => 1 } })->grep('Emma Stone');
 is($g5->count, 1, 'Got 1 result as expected for g5 (chain queries)');
 is($g5->first->{_name}, 'four', 'Got the correct result for g5 (chain queries)');
 
+# let's try to load some objects by the wrong type and make sure Giddy croaks
+# 1. try to load the about article as a collection
+my $failed1 = try { $db->get_collection('about') } catch { 'failed' };
+is($failed1, 'failed', "Can't load a document as a collection");
+# 2. try to load the about article as a static directory
+my $failed2 = try { $root->get_static_dir('about') } catch { 'failed' };
+is($failed2, 'failed', "Can't load a document as a static-file directory");
+
 # let's remove some documents
 $root->remove('about');
-ok(!-e File::Spec->catdir($tmpdir, 'about'), 'about document removed OK');
+ok(!-e $tmpdir.'/about', 'about document removed OK');
 $root->remove({ _name => qr/^t/ }, { multiple => 1 });
-ok(!-e File::Spec->catdir($tmpdir, 'two') && !-e File::Spec->catdir($tmpdir, 'three'), 'two and three documents removed OK');
+ok(!-e $tmpdir.'/two' && !-e $tmpdir.'/three', 'two and three documents removed OK');
 # We should still be able to find the files
 my $two = $root->find_one('two');
-ok($two->{_name} eq 'two' && $two->{release_year} == 2009, 'two is still there since we haven\'t commited yet');
+is($two->{release_year}, 2009, 'two is still there since we haven\'t commited yet');
 $db->commit('removed some documents');
 # now we shouldn't be able to find two
 $two = $root->find_one('two');
@@ -262,7 +270,12 @@ ok(!defined $two, 'two not there yet again');
 # let's play around with static-file directories
 my $stat = $root->get_static_dir('pics');
 ok($stat, 'Got a static-file directory object');
-is($stat->path, '/pics', 'Static dir obj has correct path');
-ok(-e File::Spec->catfile($db->_repo->work_tree, $stat->_spath, '.static'), '.static file exists');
+is($stat->path, 'pics', 'Static dir obj has correct path');
+ok(-e $db->_repo->work_tree.'/'.$stat->path.'/.static', '.static file exists');
+
+# let's get that static dir again and see we don't fail for some reason (i.e. from
+# tryin to create the directory again)
+$stat = $root->get_static_dir('pics');
+ok($stat, 'Got the same static-file directory object again');
 
 done_testing();
