@@ -39,10 +39,8 @@ sub _load_document_file {
 
 	my $content = ''.$self->db->_repo->run('show', 'HEAD:'.$self->_path_to($name));
 
-	return unless $content;
-
 	my ($yaml, $body) = ('', '');
-	if ($content =~ m/\n\n/) {
+	if ($content && $content =~ m/\n\n/) {
 		($yaml, $body) = ($`, $');
 	} else {
 		$body = $content;

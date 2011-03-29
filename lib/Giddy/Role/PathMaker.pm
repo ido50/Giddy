@@ -30,6 +30,11 @@ requires '_repo';
 
 =head1 METHODS
 
+=head2 create_dir( $path )
+
+Creates a directory under C<$path> and chmods it 0775. If path already exists,
+nothing will happen.
+
 =cut
 
 sub create_dir {
@@ -38,11 +43,24 @@ sub create_dir {
 	make_path($self->_repo->work_tree.'/'.$path, { mode => 0775 });
 }
 
+=head2 mark_dir_as_static( $path )
+
+Marks a path (assumed to be a directory) as a static-file directory by creating
+an empty '.static' file under it.
+
+=cut
+
 sub mark_dir_as_static {
 	my ($self, $path) = @_;
 
 	$self->touch($path.'/.static');
 }
+
+=head2 touch( $path )
+
+Creates an empty file in C<$path> and chmods it 0664.
+
+=cut
 
 sub touch {
 	my ($self, $path) = @_;
@@ -53,7 +71,10 @@ sub touch {
 	chmod(0664, $self->_repo->work_tree.'/'.$path);
 }
 
-=head2 create_file( $fpath, $content, $mode )
+=head2 create_file( $path, $content, $mode )
+
+Creates a file called C<$path>, with the provided content, and chmods it to
+C<$mode>.
 
 =cut
 
@@ -71,5 +92,55 @@ sub create_file {
 		|| carp "Error closing file $path: $!";
 	chmod($mode, $self->_repo->work_tree.'/'.$path);
 }
+
+=head1 AUTHOR
+
+Ido Perlmuter, C<< <ido at ido50.net> >>
+
+=head1 BUGS
+
+Please report any bugs or feature requests to C<bug-giddy at rt.cpan.org>, or through
+the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Giddy>. I will be notified, and then you'll
+automatically be notified of progress on your bug as I make changes.
+
+=head1 SUPPORT
+
+You can find documentation for this module with the perldoc command.
+
+	perldoc Giddy::Role::PathMaker
+
+You can also look for information at:
+
+=over 4
+
+=item * RT: CPAN's request tracker
+
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Giddy>
+
+=item * AnnoCPAN: Annotated CPAN documentation
+
+L<http://annocpan.org/dist/Giddy>
+
+=item * CPAN Ratings
+
+L<http://cpanratings.perl.org/d/Giddy>
+
+=item * Search CPAN
+
+L<http://search.cpan.org/dist/Giddy/>
+
+=back
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright 2011 Ido Perlmuter.
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of either: the GNU General Public License as published
+by the Free Software Foundation; or the Artistic License.
+
+See http://dev.perl.org/licenses/ for more information.
+
+=cut
 
 1;

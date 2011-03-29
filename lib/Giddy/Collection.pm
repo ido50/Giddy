@@ -17,6 +17,8 @@ has 'path' => (is => 'ro', isa => 'Str', default => '');
 
 has 'db' => (is => 'ro', isa => 'Giddy::Database', required => 1);
 
+has 'cached' => (is => 'ro', isa => 'Bool', builder => '_build_cached');
+
 has '_loc' => (is => 'ro', isa => 'Int', default => 0, writer => '_set_loc');
 
 with	'Giddy::Role::DocumentLoader',
@@ -60,6 +62,12 @@ the root directory of the database. Never has a starting slash.
 =head2 db
 
 The L<Giddy::Database> object the collection belongs to. Required.
+
+=head2 cached
+
+Holds a boolean value indicating whether the collection exists in the database
+index (i.e. has already been staged and commited), or isn't (i.e. a new one).
+Automatically calculated.
 
 =head2 _loc
 
@@ -297,7 +305,7 @@ sub batch_insert {
 			unless $attrs && ref $attrs eq 'HASH';
 
 		croak "A document called $filename already exists."
-			if $self->db->path_exists($self->_path_to($filename));
+			if $self->cached && $self->db->path_exists($self->_path_to($filename));
 	}
 
 	my @names; # will hold names of all documents created
@@ -794,6 +802,16 @@ sub _path_to {
 
 	unshift(@names, $self->path) if $self->path;
 	return join('/', @names);
+}
+
+=head2 _build_cached()
+
+=cut
+
+sub _build_cached {
+	my $self = shift;
+
+	return $self->db->path_exists($self->path) ? 1 : 0;
 }
 
 =head1 AUTHOR

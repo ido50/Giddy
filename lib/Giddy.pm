@@ -96,7 +96,14 @@ sub get_database {
 		return Giddy::Database->new(_repo => Git::Repository->new(work_tree => $path));
 	} else {
 		# new one
-		return Giddy::Database->new(_repo => Git::Repository->create(init => $path));
+		my $db = Giddy::Database->new(_repo => Git::Repository->create(init => $path));
+		
+		# create an empty .giddy file, stage it and commit, so our database will be "live"
+		$db->touch('.giddy');
+		$db->stage('.giddy');
+		$db->commit('initial commit');
+
+		return $db;
 	}
 }
 

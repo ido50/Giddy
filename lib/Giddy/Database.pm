@@ -69,12 +69,12 @@ sub get_collection {
 	$path ||= '';
 
 	# remove trailing slash from path, if exists
-	if ($path ne '') {
+	if ($path) {
 		croak "Path of collection to get must not start with a slash."
 			if $path =~ m!^/!;
 
 		croak "The collection path exists in the database but is not a collection."
-			if $self->is_document_dir($path) || $self->is_static_dir($path);
+			if $self->path_exists($path) && ($self->is_document_dir($path) || $self->is_static_dir($path));
 
 		# create the collection directory (unless it already exists)
 		$self->create_dir($path);

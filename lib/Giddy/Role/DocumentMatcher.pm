@@ -12,6 +12,7 @@ our $VERSION = "0.012";
 $VERSION = eval $VERSION;
 
 requires '_documents';
+requires '_load_document';
 
 =head1 NAME
 
@@ -25,7 +26,7 @@ Giddy::Role::DocumentMatcher - Provides query parsing and document matching for 
 
 This role provides document matching capabilities to L<Giddy::Collection> and L<Giddy::Collection::InMemory>.
 
-Requires the '_documents' attribute/method to be implemented by consuming classes.
+Requires the '_documents' and '_load_document' attributes/methods to be implemented by consuming classes.
 
 =head1 METHODS
 
