@@ -5,6 +5,18 @@ Revision history for Giddy
 	- Removed unnecessary use of File::Util in Giddy::Collection
 	- Refixed bug with empty-expression greps, this time by simply calling find()
 	  when query string is empty
+	- Giddy now never looks in the working directory in order to analyze the
+	  database, only in the Git index
+	- Added a get_collection() method to Giddy::Collection that gets child
+	  collections
+	- Created Role::PathAnalyzer and Role::PathMaker to modularize anything
+	  having to do with analyzing and creating paths in the database
+	- Renamed the mark() method to stage() as it's closer to the Git nomenclature
+	- Root path is now the empty string so paths never start with a starting
+	  slash, this makes the code much simpler
+	- Not using File::Spec anymore
+	- This is now purely Unix software
+	- Updated manual and documentation with new changes
 
 v0.11.0   2011-03-22 00:38:52 Asia/Jerusalem
 	- Fixed bug with empty-expression greps

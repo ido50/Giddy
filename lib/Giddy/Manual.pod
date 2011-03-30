@@ -11,9 +11,10 @@ only. Do not use it for production yet!
 
 =head2 WHAT IS GIDDY?
 
-Giddy is a schema-less (as in NoSQL), versioned database system built on
-top of Git. A database in Giddy is simply a Git repository, providing the
-database with automatic, comprehensive versioning and distributive capabilities.
+Giddy is a schema-less (as in NoSQL), versioned database system for Unix-like
+operating systems, built on top of Git. A database in Giddy is simply a Git
+repository, providing the database with automatic, comprehensive versioning and
+distributive capabilities.
 
 As opposed to most modern database systems, Giddy aims to be human editable.
 One can create/edit/delete database entries with nothing but a text editor
@@ -92,10 +93,8 @@ relational. Read L</"DATABASE STRUCTURE"> for more information.
 
 =head2 WHAT PLATFORMS ARE SUPPORTED?
 
-Giddy aims to be supported under any Perl-supported system, be it Unix-like
-systems, Windows systems, Mac systems, etc. However, Giddy is currently
-developed and tested only under Linux and probably won't work on non-Unix-like
-systems yet.
+Giddy is designed for Unix-like operating systems such as Linux and MacOSX.
+It probably won't work on Windows systems.
 
 =head2 WHAT KIND OF DATA CAN BE STORED IN A GIDDY DATABASE?
 

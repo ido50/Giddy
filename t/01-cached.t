@@ -12,7 +12,7 @@ use Try::Tiny;
 
 has_git();
 
-plan tests => 86;
+plan tests => 93;
 
 my $tmpdir = tempdir();#CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -98,6 +98,15 @@ is($g0->{_name}, 'index.json', 'Found index.json when grepping for "how" in coll
 # let's try to load the collection as a static directory and make sure it fails
 my $failed0 = try { $root->get_static_dir('collection') } catch { 'failed' };
 is($failed0, 'failed', "Can't load collection as a static-file directory");
+
+# let's check child collection getting and parent collection getting
+my $child_coll = $root->get_collection('collection');
+ok($child_coll, 'Got a child collection object from root collection');
+is($child_coll->path, 'collection', 'Got the correct child collection object from the root collection');
+my $parent_coll = $child_coll->get_parent;
+ok($parent_coll, 'Got the parent collection from a child collection');
+is($parent_coll->path, '', 'Got the correct parent collection from a child collection');
+ok(!$root->get_parent, "Can't get the parent of the root collection since such a parent doesn't exist");
 
 # drop the collection
 $coll->drop;
@@ -277,5 +286,17 @@ ok(-e $db->_repo->work_tree.'/'.$stat->path.'/.static', '.static file exists');
 # tryin to create the directory again)
 $stat = $root->get_static_dir('pics');
 ok($stat, 'Got the same static-file directory object again');
+
+# let's create some static files
+my $fh1 = $stat->open_text_file('README');
+$fh1->print("Shot through the heart, and you're to blame, darlin' you give love, a bad name.");
+$fh1->close;
+ok(-e $db->_repo->work_tree.'/pics/README', 'Static file created OK');
+
+$db->stage('pics/');
+$db->commit("Created a README file under pics");
+
+my $readme = $stat->read_file('README');
+is($readme, "Shot through the heart, and you're to blame, darlin' you give love, a bad name.", 'Static file read OK');
 
 done_testing();

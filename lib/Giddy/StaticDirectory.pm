@@ -6,8 +6,9 @@ use Any::Moose;
 use namespace::autoclean;
 
 use Carp;
+use IO::File;
 
-our $VERSION = "0.012";
+our $VERSION = "0.012_001";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -16,7 +17,14 @@ Giddy::StaticDirectory - A Giddy directory of static files.
 
 =head1 SYNOPSIS
 
-	my $dir = $coll->get_static_dir('pictures');
+	my $dir = $coll->get_static_dir('static_files');
+
+	my $fh = $dir->open_text_file("robots.txt");
+	$fh->print("User-agent: *\nDisallow:");
+	$fh->close;
+
+	$db->stage('static_files');
+	$db->commit('create a static-file directory');
 
 =head1 DESCRIPTION
 
@@ -24,7 +32,7 @@ This class represents Giddy static-file directories, which are directories that
 contain files which aren't documents and do not change often, most probably
 binary files (pictures, videos, songs) and other files which are often called
 "static" in the world of websites. Any sub-directory in a static directory is
-also considered a static directory, and they are infinitely nestable.
+also considered a static directory, with infinite nestability.
 
 =head1 ATTRIBUTES
 
@@ -55,7 +63,7 @@ Returns a list of all static files in the directory.
 sub list_files {
 	my $self = shift;
 
-	return $self->coll->db->list_files($self->path);
+	return $self->coll->db->_list_files($self->path);
 }
 
 =head2 list_dirs()
@@ -68,7 +76,7 @@ static-file directories as well.
 sub list_dirs {
 	my $self = shift;
 
-	return $self->coll->db->list_dirs($self->path);
+	return $self->coll->db->_list_dirs($self->path);
 }
 
 =head3 get_static_dir( $name )
@@ -88,8 +96,8 @@ sub get_static_dir {
 	my $fpath = $self->path.'/'.$name;
 
 	# try to find such a directory
-	if ($self->coll->db->path_exists($fpath)) {
-		if ($self->coll->db->is_directory($fpath)) {
+	if ($self->coll->db->_path_exists($fpath)) {
+		if ($self->coll->db->_is_directory($fpath)) {
 			# we don't check if the directory is a static directory, since by
 			# definition a descendant of a static directory is a static directory
 			return Giddy::StaticDirectory->new(path => $fpath, _collection => $self);
@@ -98,11 +106,75 @@ sub get_static_dir {
 		}
 	} else {
 		# okay, let's create the directory
-		$self->coll->db->create_dir($fpath);
+		$self->coll->db->_create_dir($fpath);
 		$self->coll->db->stage($fpath);
 
 		return Giddy::StaticDirectory->new(path => $fpath, _collection => $self);
 	}
+}
+
+=head2 open_text_file( $name, [ $mode ] )
+
+Creates a new file named C<$name> (if not exists) inside the static directory,
+opens it and returns a L<IO::File> object handle. If C<$mode> is not provided,
+C<< '>:utf8' >> is used (meaning the file is truncated (if exists) and opened
+for writing with automatic UTF-8 encoding of written data). You can provide other
+modes if you wish, but keep in mind that Giddy expects all your files to be UTF-8.
+
+=cut
+
+sub open_text_file {
+	my ($self, $name, $mode) = @_;
+
+	croak "You must provide the name of the text file to open."
+		unless $name;
+
+	$mode ||= '>:utf8';
+
+	my $fpath = $self->coll->db->_repo->work_tree.'/'.$self->path.'/'.$name;
+
+	IO::File->new($fpath, $mode) || croak "Can't open text file $name: $!";
+}
+
+=head2 open_binary_file( $name, [ $mode, $layer ] )
+
+Creates a new file named C<$name> (if not exists) inside the static directory,
+opens it, C<binmode>s it and returns a L<IO::File> object handle. If C<$mode>
+isn't provided, C<< '>' >> is used (meaning the file is truncated (if exists)
+and opened for writing). If your provide a layer string is provided, it will be
+passed to C<binmode()> when calling it.
+
+=cut
+
+sub open_binary_file {
+	my ($self, $name, $mode, $layer) = @_;
+
+	croak "You must provide the name of the binary file to open."
+		unless $name;
+
+	$mode ||= '>';
+
+	my $fpath = $self->coll->db->_repo->work_tree.'/'.$self->path.'/'.$name;
+
+	my $fh = IO::File->new($fpath, $mode) || croak "Can't open binary file $name: $!";
+	$fh->binmode($layer);
+	return $fh;
+}
+
+=head2 read_file( $name )
+
+Returns the contents of the file named C<$name> in the static directory. Assumes
+the file exists and has been indexed, will croak if not.
+
+=cut
+
+sub read_file {
+	my ($self, $name) = @_;
+
+	croak "You must provide the name of the file to read."
+		unless $name;
+
+	return $self->coll->db->_read_content($self->path.'/'.$name);
 }
 
 =head1 AUTHOR

@@ -8,7 +8,7 @@ use namespace::autoclean;
 use Carp;
 use Giddy::Database;
 
-our $VERSION = "0.012";
+our $VERSION = "0.012_001";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -26,12 +26,13 @@ Giddy - Schema-less, versioned media/document database based on Git.
 =head1 DESCRIPTION
 
 WARNING: THIS IS ALPHA SOFTWARE, RELEASED FOR TESTING PURPOSES ONLY. DO
-NOT USE IT ON A PRODUCTION ENVIRONMENT YET. IT'S INCOMPLETE, BUG-RIDDEN,
-AND WILL RUN OVER YOUR CAT.
+NOT USE IT ON A PRODUCTION ENVIRONMENT YET. IT'S INCOMPLETE, BUG-RIDDEN, LIKELY
+TO CHANGE, AND WILL RUN OVER YOUR CAT.
 
-Giddy is a schema-less (as in NoSQL), versioned database system built on
-top of Git. A database in Giddy is simply a Git repository, providing the
-database with automatic, comprehensive versioning and distributive capabilities.
+Giddy is a schema-less (as in NoSQL), versioned database system for Unix-like
+operating systems, built on top of Git. A database in Giddy is simply a Git
+repository, providing the database with automatic, comprehensive versioning and
+distributive capabilities.
 
 As opposed to most modern database systems, Giddy aims to be human editable.
 One can create/edit/delete database entries with nothing but a text editor
@@ -77,7 +78,9 @@ Returns a L<Giddy::Database> object tied to a Git repository located on the file
 system. Please provide full path names to prevent potential problems.
 
 If the path doesn't exist, Giddy will attempt to create it and initialize it
-as a Git repository.
+as a Git repository. It will also create an empty file called ".giddy" inside
+the database and perform an initial commit. You can safely remove that file
+after that.
 
 =cut
 
@@ -99,7 +102,7 @@ sub get_database {
 		my $db = Giddy::Database->new(_repo => Git::Repository->create(init => $path));
 		
 		# create an empty .giddy file, stage it and commit, so our database will be "live"
-		$db->touch('.giddy');
+		$db->_touch('.giddy');
 		$db->stage('.giddy');
 		$db->commit('initial commit');
 

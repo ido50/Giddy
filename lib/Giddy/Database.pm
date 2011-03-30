@@ -10,7 +10,7 @@ use Git::Repository;
 use Git::Repository::Log::Iterator;
 use Giddy::Collection;
 
-our $VERSION = "0.012";
+our $VERSION = "0.012_001";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -57,9 +57,9 @@ with	'Giddy::Role::PathAnalyzer',
 =head2 get_collection( [ $path_to_coll ] )
 
 Returns a L<Giddy::Collection> object tied to a certain directory in the database.
-If a path is not provided, the root collection ('/') will be used. If the collection
+If a path is not provided, the root collection ('') will be used. If the collection
 does not exist, Giddy will attempt to create it. The path provided has to be relative
-to the database's full path, but with a starting slash.
+to the database's full path, with no starting slash.
 
 =cut
 
@@ -68,16 +68,15 @@ sub get_collection {
 
 	$path ||= '';
 
-	# remove trailing slash from path, if exists
 	if ($path) {
 		croak "Path of collection to get must not start with a slash."
 			if $path =~ m!^/!;
 
 		croak "The collection path exists in the database but is not a collection."
-			if $self->path_exists($path) && ($self->is_document_dir($path) || $self->is_static_dir($path));
+			if $self->_path_exists($path) && ($self->_is_document_dir($path) || $self->_is_static_dir($path));
 
 		# create the collection directory (unless it already exists)
-		$self->create_dir($path);
+		$self->_create_dir($path);
 	}
 
 	return Giddy::Collection->new(db => $self, path => $path);

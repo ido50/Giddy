@@ -10,7 +10,7 @@ use Giddy::Collection::InMemory;
 use Giddy::StaticDirectory;
 use Tie::IxHash;
 
-our $VERSION = "0.012";
+our $VERSION = "0.012_001";
 $VERSION = eval $VERSION;
 
 has 'path' => (is => 'ro', isa => 'Str', default => '');
@@ -305,7 +305,7 @@ sub batch_insert {
 			unless $attrs && ref $attrs eq 'HASH';
 
 		croak "A document called $filename already exists."
-			if $self->cached && $self->db->path_exists($self->_path_to($filename));
+			if $self->cached && $self->db->_path_exists($self->_path_to($filename));
 	}
 
 	my @names; # will hold names of all documents created
@@ -663,16 +663,49 @@ sub last {
 
 =head2 COLLECTION OPERATIONS
 
+=head3 get_parent()
+
+Returns a L<Giddy::Collection> object tied to the parent collection of the collection.
+If this method is called on the root collection, C<undef> will be returned.
+
+=cut
+
+sub get_parent {
+	my $self = shift;
+
+	return unless $self->path;
+
+	return $self->db->get_collection($self->db->_up($self->path));
+}
+
+=head3 get_collection( $name )
+
+Returns a L<Giddy::Collection> object tied to a child-collection named C<$name>.
+If the collection does not exist, it will be created. If C<$name> exists in the
+collection, but isn't a child collection, this method will croak. C<$name> must
+not start with a slash.
+
+=cut
+
+sub get_collection {
+	my ($self, $name) = @_;
+
+	croak "You must provide the name of the child-collection to get."
+		unless $name;
+
+	return $self->db->get_collection($self->_path_to($name));
+}
+
 =head3 list_static_dirs()
 
-Returns a list of all the static-file directories in the collection, if any.
+Returns a list of all the static-file directories in the collection (if any).
 
 =cut
 
 sub list_static_dirs {
 	my $self = shift;
 
-	return map { $self->db->is_static_dir($self->_path_to($_)) } $self->db->list_dirs($self->path);
+	return map { $self->db->_is_static_dir($self->_path_to($_)) } $self->db->_list_dirs($self->path);
 }
 
 =head3 get_static_dir( $name )
@@ -694,13 +727,13 @@ sub get_static_dir {
 	my $fpath = $self->_path_to($path);
 
 	# try to find such a directory
-	if ($self->db->path_exists($fpath)) {
+	if ($self->db->_path_exists($fpath)) {
 		croak "Path $fpath already exists but isn't a static-file directory."
-			unless $self->db->is_static_dir($fpath);
+			unless $self->db->_is_static_dir($fpath);
 	} else {
 		# okay, let's create the directory
-		$self->db->create_dir($fpath);
-		$self->db->mark_dir_as_static($fpath);
+		$self->db->_create_dir($fpath);
+		$self->db->_mark_dir_as_static($fpath);
 		$self->db->stage($fpath);
 	}
 
@@ -738,13 +771,13 @@ sub _documents {
 	my $self = shift;
 
 	my $docs = Tie::IxHash->new;
-	foreach ($self->db->list_contents($self->path)) {
+	foreach ($self->db->_list_contents($self->path)) {
 		my $full_path = $self->_path_to($_);
 
 		# we're only looking for document directories and document files
-		if ($self->db->is_directory($full_path) && $self->db->is_document_dir($full_path)) {
+		if ($self->db->_is_directory($full_path) && $self->db->_is_document_dir($full_path)) {
 			$docs->STORE($_ => 'dir');
-		} elsif ($self->db->is_file($full_path)) {
+		} elsif ($self->db->_is_file($full_path)) {
 			$docs->STORE($_ => 'file');
 		}
 	}
@@ -811,7 +844,7 @@ sub _path_to {
 sub _build_cached {
 	my $self = shift;
 
-	return $self->db->path_exists($self->path) ? 1 : 0;
+	return $self->db->_path_exists($self->path) ? 1 : 0;
 }
 
 =head1 AUTHOR

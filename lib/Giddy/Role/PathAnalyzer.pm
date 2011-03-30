@@ -3,7 +3,7 @@ package Giddy::Role::PathAnalyzer;
 use Any::Moose 'Role';
 use namespace::autoclean;
 
-our $VERSION = "0.012";
+our $VERSION = "0.012_001";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -27,62 +27,62 @@ requires '_repo';
 
 =head1 METHODS
 
-=head2 list_contents( $path )
+=head2 _list_contents( $path )
 
 Returns a list of all files and directories in C<$path>. Assumes C<$path> is a directory.
 
 =cut
 
-sub list_contents {
+sub _list_contents {
 	my ($self, $path) = @_;
 
 	return grep { $_ ne '.giddy' } sort $self->_repo->run('ls-tree', '--name-only', $path ? "HEAD:$path" : 'HEAD');
 }
 
-=head2 list_files( $path )
+=head2 _list_files( $path )
 
 Returns a list of all static files in the directory. Assumes C<$path> is a directory.
 
 =cut
 
-sub list_files {
+sub _list_files {
 	my ($self, $path) = @_;
 
-	return map { $self->is_file($path.'/'.$_) } $self->list_contents($path);
+	return map { $self->_is_file($path.'/'.$_) } $self->_list_contents($path);
 }
 
-=head2 list_dirs( $path )
+=head2 _list_dirs( $path )
 
 Returns a list of all child directories in the directory. Assumes C<$path> is a directory.
 
 =cut
 
-sub list_dirs {
+sub _list_dirs {
 	my ($self, $path) = @_;
 
-	return map { $self->is_directory($path.'/'.$_) } $self->list_contents($path);
+	return map { $self->_is_directory($path.'/'.$_) } $self->_list_contents($path);
 }
 
-=head2 read_content( $path )
+=head2 _read_content( $path )
 
 Returns the contents of the file stored in C<$path>.
 
 =cut
 
-sub read_content {
+sub _read_content {
 	my ($self, $path) = @_;
 
 	''.$self->_repo->run('show', "HEAD:$path");
 }
 
-=head2 path_exists( $path )
+=head2 _path_exists( $path )
 
 Returns true if C<$path> exists in the database index (i.e. it's not enough for
 the path to exist in the working directory, it must be in the Git index as well).
 
 =cut
 
-sub path_exists {
+sub _path_exists {
 	my ($self, $path) = @_;
 
 	my ($dir, $name) = ('', '');
@@ -93,77 +93,77 @@ sub path_exists {
 		$name = $path;
 	}
 
-	if (grep { $_ eq $name } $self->list_contents($dir)) {
+	if (grep { $_ eq $name } $self->_list_contents($dir)) {
 		return 1;
 	}
 
 	return;
 }
 
-=head2 is_file( $path )
+=head2 _is_file( $path )
 
 Returns true if C<$path> is a file. Assumes path exists.
 
 =cut
 
-sub is_file {
+sub _is_file {
 	my ($self, $path) = @_;
 
 	my $t = $self->_repo->run('cat-file', '-t', "HEAD:$path");
 	return $t eq 'blob' ? 1 : undef;
 }
 
-=head2 is_directory( $path )
+=head2 _is_directory( $path )
 
 Returns true if C<$path> is a directory. Assumes path exists.
 
 =cut
 
-sub is_directory {
+sub _is_directory {
 	my ($self, $path) = @_;
 
 	my $t = $self->_repo->run('cat-file', '-t', "HEAD:$path");
 	return $t eq 'tree' ? 1 : undef;
 }
 
-=head2 is_document_dir( $path )
+=head2 _is_document_dir( $path )
 
 Returns true if C<$path> is a document directory. Assumes path exists.
 
 =cut
 
-sub is_document_dir {
+sub _is_document_dir {
 	my ($self, $path) = @_;
 
-	return $self->path_exists($path.'/'.'attributes.yaml');
+	return $self->_path_exists($path.'/'.'attributes.yaml');
 }
 
-=head2 is_static_dir( $path )
+=head2 _is_static_dir( $path )
 
 Returns true if C<$path> is a static-file directory. Assumes path exists.
 
 =cut
 
-sub is_static_dir {
+sub _is_static_dir {
 	my ($self, $path) = @_;
 
 	# a static dir is marked by a .static file, but it doesn't have to have
 	# that file if it's a child of a static dir
 	while ($path) {
-		return 1 if $self->path_exists($path.'/.static');
-		$path = $self->up($path);
+		return 1 if $self->_path_exists($path.'/.static');
+		$path = $self->_up($path);
 	}
 
 	return;
 }
 
-=head2 up( $path )
+=head2 _up( $path )
 
 Returns the parent directory of C<$path> (if any).
 
 =cut
 
-sub up {
+sub _up {
 	my ($self, $path) = @_;
 
 	if ($path =~ m!/[^/]+$!) {

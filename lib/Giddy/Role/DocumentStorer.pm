@@ -6,7 +6,7 @@ use namespace::autoclean;
 use Carp;
 use YAML::XS;
 
-our $VERSION = "0.012";
+our $VERSION = "0.012_001";
 $VERSION = eval $VERSION;
 
 requires 'db';
@@ -49,15 +49,15 @@ sub _store_document {
 		$content =~ s/^---\n//;
 
 		# create the document
-		$self->db->create_file($fpath, $content, 0664);
+		$self->db->_create_file($fpath, $content, 0664);
 	} else {
 		# create the document directory
-		$self->db->create_dir($fpath);
+		$self->db->_create_dir($fpath);
 
 		# create the attributes file
 		my $yaml = Dump($attrs);
 		$yaml =~ s/^---\n//;
-		$self->db->create_file($fpath.'/attributes.yaml', $yaml, 0664);
+		$self->db->_create_file($fpath.'/attributes.yaml', $yaml, 0664);
 	}
 
 	# stage the document

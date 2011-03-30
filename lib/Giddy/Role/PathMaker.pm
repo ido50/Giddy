@@ -6,7 +6,7 @@ use namespace::autoclean;
 use Carp;
 use File::Path qw/make_path/;
 
-our $VERSION = "0.012";
+our $VERSION = "0.012_001";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -30,55 +30,55 @@ requires '_repo';
 
 =head1 METHODS
 
-=head2 create_dir( $path )
+=head2 _create_dir( $path )
 
 Creates a directory under C<$path> and chmods it 0775. If path already exists,
 nothing will happen.
 
 =cut
 
-sub create_dir {
+sub _create_dir {
 	my ($self, $path) = @_;
 
 	make_path($self->_repo->work_tree.'/'.$path, { mode => 0775 });
 }
 
-=head2 mark_dir_as_static( $path )
+=head2 _mark_dir_as_static( $path )
 
 Marks a path (assumed to be a directory) as a static-file directory by creating
 an empty '.static' file under it.
 
 =cut
 
-sub mark_dir_as_static {
+sub _mark_dir_as_static {
 	my ($self, $path) = @_;
 
-	$self->touch($path.'/.static');
+	$self->_touch($path.'/.static');
 }
 
-=head2 touch( $path )
+=head2 _touch( $path )
 
 Creates an empty file in C<$path> and chmods it 0664.
 
 =cut
 
-sub touch {
+sub _touch {
 	my ($self, $path) = @_;
 
 	open(FILE, ">:utf8", $self->_repo->work_tree.'/'.$path)
-		|| croak "Can't touch $path: $!";
+		|| croak "Can't _touch $path: $!";
 	close FILE;
 	chmod(0664, $self->_repo->work_tree.'/'.$path);
 }
 
-=head2 create_file( $path, $content, $mode )
+=head2 _create_file( $path, $content, $mode )
 
 Creates a file called C<$path>, with the provided content, and chmods it to
 C<$mode>.
 
 =cut
 
-sub create_file {
+sub _create_file {
 	my ($self, $path, $content, $mode) = @_;
 
 	# there's no need to open the output file in binary :utf-8 mode,
