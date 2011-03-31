@@ -14,7 +14,7 @@ has_git();
 
 plan tests => 93;
 
-my $tmpdir = tempdir();#CLEANUP => 1);
+my $tmpdir = tempdir(CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
 
 # create a new Giddy object
@@ -289,7 +289,7 @@ ok($stat, 'Got the same static-file directory object again');
 
 # let's create some static files
 my $fh1 = $stat->open_text_file('README');
-$fh1->print("Shot through the heart, and you're to blame, darlin' you give love, a bad name.");
+$fh1->print("Shot through the heart, and you're to blame, darlin' you give love a bad name.");
 $fh1->close;
 ok(-e $db->_repo->work_tree.'/pics/README', 'Static file created OK');
 
@@ -297,6 +297,6 @@ $db->stage('pics/');
 $db->commit("Created a README file under pics");
 
 my $readme = $stat->read_file('README');
-is($readme, "Shot through the heart, and you're to blame, darlin' you give love, a bad name.", 'Static file read OK');
+is($readme, "Shot through the heart, and you're to blame, darlin' you give love a bad name.", 'Static file read OK');
 
 done_testing();

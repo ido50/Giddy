@@ -107,7 +107,7 @@ sub commit {
 
 Marks files/directories as to be staged. Mostly called automatically by
 C<new_collection()>, C<new_document()>, etc., but you can use it if you need to.
-Paths are relative to database's path and may contain starting slashes.
+Paths are relative to database's path and should not contain starting slashes.
 
 =cut
 

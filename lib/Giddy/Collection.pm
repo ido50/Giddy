@@ -279,8 +279,8 @@ sub insert {
 
 =head3 batch_insert( [ $name1 => \%attrs1, $name2 => \%attrs2, ... ] )
 
-Inserts a series of documents one after another. Returns a list of all document
-names created. If even one document cannot be created (mostly since a similarly
+Inserts a series of documents one after another. Returns a list with the names of
+all documents created. If even one document cannot be created (mostly since a similarly
 named document/collection already exists), none will be created.
 
 =cut

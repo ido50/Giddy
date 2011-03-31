@@ -5,7 +5,8 @@ Giddy::Manual - Manual for the Giddy versioned NoSQL database
 =head1 PROJECT STATUS
 
 This project is currently in alpha status, released for testing purposes
-only. Do not use it for production yet!
+only. Implementation and interface are likely to change (and have in version
+0.012_001). Do not use it for production yet!
 
 =head1 FAQ
 
@@ -66,16 +67,16 @@ So, while you I<could> use Giddy for a lot of purposes, you probably I<shouldn't
 
 Probably not. Giddy cannot compete with databases like MySQL or MongoDB.
 While the underlying Git system is known to be fast at what it does,
-the YAML serialization employed by Giddy is time consuming. Giddy aims to
-be I<fast enough> for the use case described above. Updating documents
-(unless performed by direct file editing) is also time consuming, as Giddy
-can't update in-place like MongoDB does.
+the YAML serialization employed by Giddy is time consuming, even though it is
+performed by L<YAML::XS>. Giddy aims to be I<fast enough> for the use case
+described above. Updating documents (unless performed by direct file editing)
+is also time consuming, as Giddy can't update in-place like MongoDB does.
 
 =head2 IS IT ACID COMPLIANT?
 
 No. While Giddy is atomic (all operations are performed by a single commit,
-so either all of them happen, or none at all), isolated (other operations
-cannot access data modified by an in-progress commit). Giddy is definitely
+so either all of them happen, or none at all) and isolated (other operations
+cannot access data modified by an in-progress commit), Giddy is definitely
 not consistent, as no consistency checks or data validations are performed
 (this stems from the fact that Giddy is a schema-less database, thus Giddy
 will never be consistent). As for durability, I'm actually not quite sure.
@@ -128,8 +129,7 @@ nothing more. Everything you know from Git is true in Giddy.
 =head2 CAN I HELP?
 
 Yes, you can. I'm currently looking for people who can help with the development
-of Giddy, especially test writing and helping me with adding support for other
-systems like Microsoft Windows. I'd be very happy if anyone has suggestions
+of Giddy, especially test writing. I'd be very happy if anyone has suggestions
 on how to make Giddy faster. Other than that, please report any bugs you find
 through the normal channels (see L<Giddy/"BUGS"> for more information on bug
 reporting).
@@ -160,13 +160,13 @@ seemlessly combined, i.e. a collection can have documents of both kind):
 
 =item 1. The simple way (suited for articles and HTML pages): A file
 document, consisting of one text file. This file has two sections, separated
-by two newline characters. The top section is YAML text holding the document's
-attributes. The bottom section (i.e. after the double newlines) is the
-article's text (or the page's HTML), which is actually called the
-document's '_body' attribute. If the document has no attributes other
+by two newline characters (the first double newlines in the file). The top
+section is YAML text holding the document's attributes. The bottom section
+(i.e. after the double newlines) is the article's text (or the page's HTML,
+or whatever), which is actually called the document's '_body' attribute. This is
+very similar to HTTP requests/responses. If the document has no attributes other
 than its body, then it won't have a YAML section, just the text section,
-without the double newline characters before it. This is very similar to
-HTTP requests/responses. This type of document, however, is limited, since
+without the double newline characters before it. This type of document, however, is limited, since
 it cannot have binary attributes and cannot have child collections; it is
 mostly provided for its convenience (very human editable) and its ability
 to make a Giddy database more website-like.
@@ -176,9 +176,9 @@ called 'attributes.yaml' (required) which holds all the document's textual/seria
 attributes, and zero or more binary files. These files are also considered
 attributes of the document. Quite frankly, Giddy will not care if the files
 are in fact binary. They can be JSON or plain text files for all it cares, but as
-long as they are separate than attributes.yaml, they will be considered
+long as they are separate from attributes.yaml, they will be considered
 binary attributes. The document directory can also have sub-directories,
-or more correctly sub-collections. These hold child directories of the
+or more correctly sub-collections. These hold child collection of the
 document. You can think of a document's sub-collection as another attribute
 of the document.
 
@@ -187,15 +187,22 @@ of the document.
 Documents in Giddy don't have an ID attribute. Every document has a '_name'
 attribute which is simply the document's file name (or directory name in
 case it's a directory-based document). This file name is unique in the
-collection, and thus can serve as the documents ID.
+collection, and thus can serve as the documents ID (to make it clear, there cannot
+be a directory and a file with the same name in the same directory).
 
-I aim to add support for directories which don't contain documents at all,
-but only "static files", which will make it suitable for binary file storage.
-This is not implemented yet though.
+Giddy also has support for directories which don't contain documents at all, but
+only "static files", which will make it suitable for binary file storage and files
+which have no attribute and whose contents rarely changes. These are called
+"static-file directories" and are marked by an empty file called ".static". These
+directories are also nestable. A directory which is a child of a static-directory
+is automatically marked a static-file directory (no need for the ".static" file),
+so a static-file directory can't hold collections or document directories.
 
-How does Giddy differentiate between collection directories and document
-directories? Simple, if a directory has an 'attributes.yaml' file - then
-it is a document. If it doesn't, then it's a collection.
+How does Giddy differentiate between the different type of directories in the
+database? Simple, if a directory has an 'attributes.yaml' file - then
+it is a document. If it has a ".static" file, or a (possibly distant) parent
+of it has a ".static" file - then it is a static-file directory. If none of this
+is true, then it's a collection.
 
 =head2 EXAMPLE STRUCTURE
 
@@ -220,6 +227,12 @@ Let's take a look at an example of a simple Giddy database:
 			perl_topics/				<-- A collection
 				having_some_unicode_problems/		<-- A document directory
 					attributes.yaml				<-- The document's attributes
+		pictures/
+			.static			<-- Marks directory as a static-file directory
+			one.jpg			<-- A static file
+			two.jpg			<-- A static file
+			three.jpg		<-- A static file
+			four.jpg		<-- A static file
 
 The structure should be pretty self-explanatory. You can see that this
 database basically represents an entire website. This is Giddy's main
@@ -248,7 +261,10 @@ syntax for creating/connecting to a database is the same:
 	my $db = $giddy->getdb('/path/to/database');
 
 If the database doesn't exist yet, Giddy will attempt to create it and
-initialize it as a Git repository.
+initialize it as a Git repository. It will also (only if the repository doesn't
+already exist) create an empty file named ".giddy" in the repository, stage it
+(i.e. C<git add> it) and commit an initial commit. This file can be removed later,
+it serves no purpose other than the database initiation.
 
 Once the database has been created, it already has one collection, the
 root collection, which actually is C</path/to/database>.
@@ -257,9 +273,13 @@ root collection, which actually is C</path/to/database>.
 
 Just like above, the syntax for creating/getting a collection is the same:
 
-	my $coll = $db->get_collection('/collection'); # gets the collection /path/to/database/collection
-	my $root = $db->get_collection('/');	# get the root collection /path/to/database
+	my $coll = $db->get_collection('collection'); # gets the collection /path/to/database/collection
+	my $root = $db->get_collection('');	# get the root collection /path/to/database
 						# (also simply $db->get_collection() with no parameters)
+
+You can also create/get a child collection object from a parent collection easily:
+
+	my $child_coll = $coll->get_collection('child_collection');
 
 =head2 CREATING DOCUMENTS
 
@@ -307,9 +327,8 @@ different: you have to provide an even-number array-ref, like so:
 As previousely mentioned, data inserted is automatically UTF-8 decoded,
 so make sure your data actually is UTF-8.
 
-Note that the C<insert()> method returns the full path of the document created.
-For example, creating 'index.html' in the '/articles' collection returns '/articles/index.html'.
-C<batch_insert()> will return an array of all paths created.
+Note that the C<insert()> method returns the name of the document created, while
+C<batch_insert()> returns an array of all names created.
 
 After creating documents, they are not yet added to the database. You have to commit
 your changes first. If you know Git (and you should), you'd know you have to stage
@@ -838,12 +857,120 @@ Dropping collections is easy:
 This will completely remove the collection and all documents/files/subcollections
 in it. Internally, the drop command uses the C<git rm> command.
 
+=head2 STATIC-FILE DIRECTORIES
+
+Giddy also supports a special kind of directories called static-file directories.
+These directories do not contain documents, but files which have no attributes,
+most likely binary files and text files which don't change often. The term "static
+file" will be most familiar to web developers using web application frameworks.
+These files are served directly by web servers/applications, while other resources
+are dynamic and "calculated" on the fly per request.
+
+Static-file directories are marked with an empty ".static" file. They are infinitely
+nestable, and cannot contain directories which are not static directories also (so
+a collection or a document-directory cannot be children of a static directory). There's
+no need to mark every child static directory with a ".static" file, only the top
+parent needs it.
+
+You should note that storing large binary files in static-file directories is
+problematic, as Git isn't all that efficient when dealing with binary files, and
+large binary files make cloning databases slow, especially if they change often.
+
+Since static directories are rather simple, Giddy provides a pretty simple interface
+for them:
+
+=head3 CREATING / LOADING STATIC-FILE DIRECTORIES
+
+Like collections, the syntax for creating or getting an existing static directory
+is equivalent:
+
+	my $picture_albums = $coll->get_static_dir('pics');
+
+	my $trip_to_alaska = $picture_albums->get_static_dir('trip_to_alaska');
+
+If a static directory you're trying to load doesn't exist, Giddy will attempt to
+create it, and, if it's a direct child of a collection (i.e. not a child of another
+static-file directory), an empty ".static" file will be created in it. Giddy will
+also automatically stage (C<git add>) the directory, but won't commit any changes.
+
+=head3 CREATING / EDITING STATIC FILES
+
+You will likely find that creating and editing static files in a Giddy database
+makes much more sense when performed directly from Git and the command line.
+However, Giddy provides a simple interface for doing so:
+
+	# get a static directory
+	my $static_dir = $coll->get_static_dir('static_files');
+
+	# create (or open an existing) static file handle
+	my $fh = $static_dir->open_text_file('robots.txt');
+
+	# print something to the file
+	$fh->print("User-agent: *\nDisallow:");
+
+	# close the file handle
+	$fh->close;
+
+	# stage the file (Giddy won't do so automatically)
+	$db->stage($static_dir->path.'/robots.txt');
+
+By default, Giddy opens static files with the C<< '>:utf8' >> mode, meaning the
+file is created if it doesn't exist, truncated if it does, and opened for writing
+with automatic UTF-8 encoding. You can provide a different mode as you wish:
+
+	my $fh = $static_dir->open_text_file('robots.txt', '>>'); # file opened for appending in ASCII
+
+You can also create/open binary files:
+
+	my $fh = $static_dir->open_binary_file('uploaded_image.jpg');
+
+Giddy will open this file and perform a C<binmode()> call on the resulting file
+handle. By default, it will be opened with the '>' mode, meaning it is created
+if it doesn't exist and truncated if it doesn. You can provide a different mode
+just like with text files. You can also provide a layer directive which will be
+passed to C<binmode()>:
+
+	my $fh = $static_dir->open_binary_file('binary_file', '>', ':crlf:bytes');
+
+Note that Giddy will not automatically stage files you open, so you have to do
+that manually with the C<stage()> method in L<Giddy::Database>.
+
+To read the contents of a file in a static directory that has been stage and
+committed, you can do this:
+
+	my $robots = $static_dir->read_file('robots.txt');
+
+=head3 LISTING STATIC FILES AND DIRECTORIES
+
+If you need a list of all static directories I<inside a collection>, use:
+
+	my @static_dirs = $coll->list_static_dirs;
+
+This returns the names of the static directories, not their objects:
+
+	my $static_dir_1 = $coll->get_static_dir($static_dirs[0]);
+
+When you do have a static directory object, you can get a list of files and
+sub-directories in it like so:
+
+	my @files = $static_dir_1->list_files;
+	my @dirs = $static_dir_1->list_dirs;
+
+Note that only files and directories which have been staged and commited are
+returned in the lists.
+
 =head2 COMMITING CHANGES
 
-After creating collections/documents, or basically making any kind of changes,
+After creating collections/documents/static files, or basically making any kind of changes,
 you need to commit the changes for them to actually take effect. Commiting in Giddy
 is very simple. You don't have to stage files like you do with C<git add> when
-manipulating collections and documents, Giddy does that automatically for you.
+manipulating collections and documents (but you do when manipulating static
+directories and their files), Giddy does that automatically for you.
+
+To stage files for the next commit (those that weren't staged automatically by
+Giddy), use the C<stage()> method:
+
+	$db->stage('index.html', 'collection/article.html', 'collection/some_document_directory');
 
 To commit, just use the C<commit()> method with a commit message on the database
 object:
@@ -851,12 +978,8 @@ object:
 	$db->commit("Created some new documents and remove some old one");
 
 You don't have to provide a commit message, but do yourself a favor and do so. If
-you don't provide one, Giddy will use a commit message like "Commited 5 changes".
-
-If for some reason you need to (for example for adding binary attributes), you can
-manually stage files with the C<stage()> method:
-
-	$db->stage('/index.html', '/collection/article.html', '/collection/some_document_directory');
+you don't provide one, Giddy will use a commit message like "Commited 5 changes",
+which isn't very helpful.
 
 =head2 UNDOING STUFF
 
