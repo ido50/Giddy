@@ -12,7 +12,7 @@ use Try::Tiny;
 
 has_git();
 
-plan tests => 93;
+plan tests => 95;
 
 my $tmpdir = tempdir(CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -141,8 +141,22 @@ ok(($r1[0]->{_name} eq 'two' && $r1[1]->{_name} eq 'four') || ($r1[1]->{_name} e
 my $f2 = $root->find({ imdb_score => { '$exists' => 0 } });
 is($f2->count, 4, 'Got 4 results as expected when searching by imdb_score => { $exists => 0 }');
 
+# let's play around with child documents and collections a bit
+my $child_coll1 = $db->get_collection($root->_path_to('four', 'texts'));
+ok($child_coll1, 'Got a child collection for the four document');
+$child_coll1->insert('one.txt', { _body => 'WAKKA WAKKA' });
+$child_coll1->insert('two.txt', { _body => 'WIKKI WIKKI' });
+my $child_coll2 = $db->get_collection($root->_path_to('four', 'jsons'));
+ok($child_coll2, 'Got a child collection for the four document');
+$child_coll2->insert('one.json', { _body => '{ "message": "WAKKA WAKKA" }' });
+$child_coll2->insert('two.json', { _body => '{ "message": "WIKKI WIKKI" }' });
+
+$root->insert('four/stuff', { asdf => 'stuff and things' });
+$db->stage('four');
+$db->commit("Created some child collections and documents in the four document");
+
 my $f3 = $root->find({ imdb_score => { '$gt' => 7.5 } });
-is_deeply([$f3->all], [{ _name => 'four', title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8 }], 'Got the correct result when searching by $gt => 7.5');
+is_deeply([$f3->all], [{ _name => 'four', title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8, _has_many => ['jsons', 'texts'], _has_one => ['stuff'] }], 'Got the correct result when searching by $gt => 7.5');
 
 my $f4 = $root->find({ starring => 'Jesse Eisenberg' });
 my @r4 = $f4->all;

@@ -8,7 +8,7 @@ use Data::Compare;
 use DateTime::Format::W3CDTF;
 use Try::Tiny;
 
-our $VERSION = "0.012_001";
+our $VERSION = "0.012_002";
 $VERSION = eval $VERSION;
 
 requires '_documents';

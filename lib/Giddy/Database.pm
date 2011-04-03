@@ -10,7 +10,7 @@ use Git::Repository;
 use Git::Repository::Log::Iterator;
 use Giddy::Collection;
 
-our $VERSION = "0.012_001";
+our $VERSION = "0.012_002";
 $VERSION = eval $VERSION;
 
 =head1 NAME

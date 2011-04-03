@@ -1,6 +1,14 @@
 Revision history for Giddy
 
 {{$NEXT}}
+	- Added support for child documents and made the whole child collection/document
+	  a bit clearer by adding "_has_many" and "_has_one" to every document
+	  loaded
+	- Updated manual with new sections on child collections and documents
+	- Fixed bugs with _list_files and _list_dirs in PathAnalyzer (used the
+	  "map" function instead of "grep" accidentally)
+
+0.012_001 2011-03-31 19:32:12 Asia/Jerusalem
 	- Added support for static file directories
 	- Removed unnecessary use of File::Util in Giddy::Collection
 	- Refixed bug with empty-expression greps, this time by simply calling find()

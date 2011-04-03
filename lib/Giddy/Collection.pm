@@ -10,7 +10,7 @@ use Giddy::Collection::InMemory;
 use Giddy::StaticDirectory;
 use Tie::IxHash;
 
-our $VERSION = "0.012_001";
+our $VERSION = "0.012_002";
 $VERSION = eval $VERSION;
 
 has 'path' => (is => 'ro', isa => 'Str', default => '');
@@ -299,13 +299,13 @@ sub batch_insert {
 	# make sure array is valid and we can actually create all the documents (i.e. they
 	# don't already exist) - if even one document is invalid, we don't create any
 	foreach my $filename ($hash->Keys) {
+		croak "A document called $filename already exists."
+			if $self->cached && $self->db->_path_exists($self->_path_to($filename));
+
 		my $attrs = $hash->FETCH($filename);
 
 		croak "You must provide document ${filename}'s attributes as a hash-ref."
 			unless $attrs && ref $attrs eq 'HASH';
-
-		croak "A document called $filename already exists."
-			if $self->cached && $self->db->_path_exists($self->_path_to($filename));
 	}
 
 	my @names; # will hold names of all documents created

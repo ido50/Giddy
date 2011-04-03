@@ -146,12 +146,14 @@ sub-collections can have as many sub-collections of their own, etc. In other
 words, a Giddy database is hierarchical. If it isn't clear enough, a collection
 in Giddy is a directory in the file system.
 
-Not only that, documents can have sub-collections of their own. This
-feature is intended to provide at least some relational capabilities to
-the database, since documents stored in a collection that is a child of
-a document can be thought of as belonging to that parent document. In other
-words, the collection can be considered an attribute of the parent document,
-containing a list of child documents. It's not perfect, but it's something.
+Not only that, documents can have sub-collections of their own. These contain other
+documents which are considered child documents. If a document has a child collection
+called "comments", then the document is considered to I<have many> comments.
+Furthermore, documents can directly hold other documents. These are also considered
+child documents. If a document has a child document called "review", then the
+document is considered to I<have one> review. These two features are provided
+in order to give Giddy at least some relational properties. It's not perfect,
+but it's something.
 
 Documents in a Giddy collection are stored in two ways (which can be
 seemlessly combined, i.e. a collection can have documents of both kind):
@@ -167,7 +169,7 @@ or whatever), which is actually called the document's '_body' attribute. This is
 very similar to HTTP requests/responses. If the document has no attributes other
 than its body, then it won't have a YAML section, just the text section,
 without the double newline characters before it. This type of document, however, is limited, since
-it cannot have binary attributes and cannot have child collections; it is
+it cannot have binary attributes and cannot have child collections/documents; it is
 mostly provided for its convenience (very human editable) and its ability
 to make a Giddy database more website-like.
 
@@ -178,9 +180,10 @@ attributes of the document. Quite frankly, Giddy will not care if the files
 are in fact binary. They can be JSON or plain text files for all it cares, but as
 long as they are separate from attributes.yaml, they will be considered
 binary attributes. The document directory can also have sub-directories,
-or more correctly sub-collections. These hold child collection of the
-document. You can think of a document's sub-collection as another attribute
-of the document.
+which are either child collections that hold child documents of the document
+(akin to the "has_many" relationship you might be familiar with from the SQL and
+L<DBIx::Class> world), or document directories, every one of which also considered
+a child document of the document (akin to the "has_one" relationship).
 
 =back
 
@@ -222,6 +225,8 @@ Let's take a look at an example of a simple Giddy database:
 					comments/				<-- A collection
 						one.html				<-- A document file
 						two.html				<-- A document file
+					review/					<-- A document directory
+						attributes.yaml				<-- The document's attributes
 				giddy_is_dumb/				<-- A document directory
 					attributes.yaml				<-- The document's attributes
 			perl_topics/				<-- A collection
@@ -847,6 +852,55 @@ The following examples explain how to use the C<remove()> method:
 	$coll->sort([date => -1])->remove({ author => 'Some Guy' }, { just_one => 1 }); # remove just the newest document by Some Guy
 
 Internally, the C<remove()> method deletes documents with Git's C<git rm> command.
+
+=head2 CHILD COLLECTIONS
+
+As described in L</"DATABASE STRUCTURE">, document-directories can have child
+collections. This is useful in order to group child documents that share certain
+characteristics. The nestability is actually infinite (every child collection can also
+have child collections and so on).
+
+Creating a child collection for a document is performed like any other collection:
+
+	my $doc_child_coll_1 = $db->get_collection('path/to/document/references');
+	my $doc_child_coll_2 = $db->get_collection('path/to/document/comments');
+
+Two collection directories called "references" and "comments" will be created
+inside the C<path/to/document> document. Once you have the collection object,
+you use just like any other collection object.
+
+When you load a document in a collection, the returned document hash-ref will have
+a key called C<_has_many>, which will list (in an alphabetically sorted array-ref)
+all child collections of the document; so, for the example above, that would be:
+
+	_has_many => ['comments', 'references']
+
+You should note that every document will have the C<_has_many> key, even if it
+has no child collections, in which case C<_has_many> will be empty.
+
+=head2 CHILD DOCUMENTS
+
+As described in L</"DATABASE STRUCTURE">, document-directories can have child
+documents. Actually, they can only have child document-directories (i.e. no document
+files, as all files inside a document directory are considered binary attributes
+of it). Once again, that document directory can also contain child collections
+and directories ad infinitum.
+
+Inserting a child document for a document is performed like any other C<insert>:
+
+	$coll->insert('path/to/document/review', { key => 'value', number => 123 });
+
+A document directory called "review" will be created inside the C<path/to/document>
+document.
+
+When you load a document in a collection, the returned document hash-ref will have
+a key called C<_has_one>, which will list (in an alphabetically sorted array-ref)
+all child documents of the document; so, for the example above, that would be:
+
+	_has_one => ['review']
+
+You should note that every document will have the C<_has_one> key, even if it
+has no child documents, in which case C<_has_one> will be empty.
 
 =head2 DROPPING COLLECTIONS
 

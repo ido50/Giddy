@@ -6,7 +6,7 @@ use namespace::autoclean;
 use Carp;
 use YAML::XS;
 
-our $VERSION = "0.012_001";
+our $VERSION = "0.012_002";
 $VERSION = eval $VERSION;
 
 requires 'db';

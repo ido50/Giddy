@@ -8,7 +8,7 @@ use Encode;
 use Try::Tiny;
 use YAML::XS;
 
-our $VERSION = "0.012_001";
+our $VERSION = "0.012_002";
 $VERSION = eval $VERSION;
 
 requires 'db';
@@ -70,9 +70,15 @@ sub _load_document_dir {
 	croak "Can't find/read attributes.yaml file of document $name." unless $yaml;
 	$doc = try { Load($yaml) } catch { {} };
 
+	# load child collections
+	$doc->{_has_many} = [sort grep { !$self->db->_is_document_dir($self->_path_to($name, $_)) && !$self->db->_is_static_dir($self->_path_to($name, $_)) } $self->db->_list_dirs($self->_path_to($name))];
+
+	# load child documents
+	$doc->{_has_one} = [sort grep { $self->db->_is_document_dir($self->_path_to($name, $_)) } $self->db->_list_dirs($self->_path_to($name))];
+
 	# try to load binary files (unless we're skipping binary)
 	unless ($skip_bin) {
-		foreach (grep {!/^attributes\.yaml$/} $self->db->_repo->run('ls-tree', '--name-only', "HEAD:".$self->_path_to($name))) {
+		foreach (grep { $_ ne 'attributes.yaml' } $self->db->_list_files($self->_path_to($name))) {
 			$doc->{$_} = $self->_path_to($name, $_);
 		}
 	}
