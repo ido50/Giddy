@@ -6,7 +6,6 @@ use Any::Moose;
 use namespace::autoclean;
 
 use Carp;
-use Git::Repository;
 use Git::Repository::Log::Iterator;
 use Giddy::Collection;
 

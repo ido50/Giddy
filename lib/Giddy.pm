@@ -6,6 +6,7 @@ use Any::Moose;
 use namespace::autoclean;
 
 use Carp;
+use Git::Repository 1.18;
 use Giddy::Database;
 
 our $VERSION = "0.012_003";
@@ -98,8 +99,10 @@ sub get_database {
 		# existing
 		return Giddy::Database->new(_repo => Git::Repository->new(work_tree => $path));
 	} else {
-		# new one
-		my $db = Giddy::Database->new(_repo => Git::Repository->create(init => $path));
+		# new one, let's create the repository's directory
+		Git::Repository->run('init', $path)
+			|| croak "Failed creating new Giddy repository, please check provided path is valid and that you have appropriate permissions to create the repository.";
+		my $db = Giddy::Database->new(_repo => Git::Repository->new(work_tree => $path));
 		
 		# create an empty .giddy file, stage it and commit, so our database will be "live"
 		$db->_touch('.giddy');
