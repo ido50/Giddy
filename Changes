@@ -1,6 +1,9 @@
 Revision history for Giddy
 
 {{$NEXT}}
+	- Fixed small errors in the docs
+
+0.012_002 2011-04-03 22:31:25 Asia/Jerusalem
 	- Added support for child documents and made the whole child collection/document
 	  a bit clearer by adding "_has_many" and "_has_one" to every document
 	  loaded

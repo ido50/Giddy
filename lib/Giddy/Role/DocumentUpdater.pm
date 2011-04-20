@@ -5,7 +5,7 @@ use namespace::autoclean;
 
 use Carp;
 
-our $VERSION = "0.012_002";
+our $VERSION = "0.012_003";
 $VERSION = eval $VERSION;
 
 =head1 NAME

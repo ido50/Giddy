@@ -11,12 +11,12 @@ SYNOPSIS
 DESCRIPTION
     WARNING: THIS IS ALPHA SOFTWARE, RELEASED FOR TESTING PURPOSES ONLY. DO
     NOT USE IT ON A PRODUCTION ENVIRONMENT YET. IT'S INCOMPLETE, BUG-RIDDEN,
-    AND WILL RUN OVER YOUR CAT.
+    LIKELY TO CHANGE, AND WILL RUN OVER YOUR CAT.
 
-    Giddy is a schema-less (as in NoSQL), versioned database system built on
-    top of Git. A database in Giddy is simply a Git repository, providing
-    the database with automatic, comprehensive versioning and distributive
-    capabilities.
+    Giddy is a schema-less (as in NoSQL), versioned database system for
+    Unix-like operating systems, built on top of Git. A database in Giddy is
+    simply a Git repository, providing the database with automatic,
+    comprehensive versioning and distributive capabilities.
 
     As opposed to most modern database systems, Giddy aims to be human
     editable. One can create/edit/delete database entries with nothing but a
@@ -57,7 +57,9 @@ OBJECT METHODS
     problems.
 
     If the path doesn't exist, Giddy will attempt to create it and
-    initialize it as a Git repository.
+    initialize it as a Git repository. It will also create an empty file
+    called ".giddy" inside the database and perform an initial commit. You
+    can safely remove that file after that.
 
 AUTHOR
     Ido Perlmuter, "<ido at ido50.net>"

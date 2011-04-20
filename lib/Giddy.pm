@@ -8,7 +8,7 @@ use namespace::autoclean;
 use Carp;
 use Giddy::Database;
 
-our $VERSION = "0.012_002";
+our $VERSION = "0.012_003";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -21,7 +21,7 @@ Giddy - Schema-less, versioned media/document database based on Git.
 
 	my $giddy = Giddy->new;
 
-	my $db = $giddy->getdb('/path/to/database');
+	my $db = $giddy->get_database('/path/to/database');
 
 =head1 DESCRIPTION
 

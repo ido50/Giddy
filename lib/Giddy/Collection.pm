@@ -10,7 +10,7 @@ use Giddy::Collection::InMemory;
 use Giddy::StaticDirectory;
 use Tie::IxHash;
 
-our $VERSION = "0.012_002";
+our $VERSION = "0.012_003";
 $VERSION = eval $VERSION;
 
 has 'path' => (is => 'ro', isa => 'Str', default => '');
