@@ -263,7 +263,7 @@ No parameters or attributes are required.
 As in MongoDB, Giddy doesn't care if a database already exists or not. The
 syntax for creating/connecting to a database is the same:
 
-	my $db = $giddy->getdb('/path/to/database');
+	my $db = $giddy->get_database('/path/to/database');
 
 If the database doesn't exist yet, Giddy will attempt to create it and
 initialize it as a Git repository. It will also (only if the repository doesn't
@@ -661,7 +661,7 @@ A couple of things worth knowing when it comes to sorting:
 
 =over
 
-=item 1. If you query a collection only by name (or with C<grep()> and then attempt
+=item 1. If you query a collection only by name (or with C<grep()>) and then attempt
 to sort by other attributes, Giddy will be forced to load all documents in the
 collection, making it much slower.
 
@@ -678,15 +678,15 @@ You can sort a collection as much as you want.
 
 =head3 FULL PATH FINDING
 
-Since Giddy is web-oriented, it might be useful for you search for documents that
+Since Giddy is web-oriented, it might be useful for you to search for documents that
 match a full path, disregarding whatever collection its in. For example, looking back
 at the example database structure from earlier in this manual, say we wanted to
 find the 'giddy_is_cool' document. We can use C<find()> on the database object
 like so:
 
-	my $doc = $db->find('/forum/general_topics/giddy_is_cool');
+	my $doc = $db->find('forum/general_topics/giddy_is_cool');
 
-This will essentially find the collection '/forum/general_topics' for you, and
+This will essentially find the collection 'forum/general_topics' for you, and
 then run C<find('giddy_is_cool')> on it. You can still use C<find_one()> too, which
 is more appropriate in the above example.
 
@@ -706,7 +706,7 @@ of articles, and every article has a little picture attached to it:
 Both 'article-one' and 'article-two' have the binary 'picture.png' attribute.
 
 Giddy's support for binary attributes is currently very limited. You can't create
-binary attributes with Giddy, you'd have to do that manually (i.e. by direct
+binary attributes with the Giddy module, you'd have to do that manually (i.e. by direct
 manipulation of the database's working copy), and you can't query by binary attributes
 (even for existance, for example).
 
@@ -721,7 +721,7 @@ their value. So, loading 'article-one', for example, will look something like th
 		'_name' => 'article-one',
 		'title' => 'Article One',
 		'author' => 'Some Guy',
-		'picture.png' => '/articles/article-one/picture.png',
+		'picture.png' => 'articles/article-one/picture.png',
 	}
 
 Giddy doesn't yet provide the ability to read the binary attribute, but will do

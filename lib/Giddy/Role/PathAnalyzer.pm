@@ -3,7 +3,7 @@ package Giddy::Role::PathAnalyzer;
 use Any::Moose 'Role';
 use namespace::autoclean;
 
-our $VERSION = "0.012_003";
+our $VERSION = "0.012_004";
 $VERSION = eval $VERSION;
 
 =head1 NAME

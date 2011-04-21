@@ -8,7 +8,7 @@ use Encode;
 use Try::Tiny;
 use YAML::XS;
 
-our $VERSION = "0.012_003";
+our $VERSION = "0.012_004";
 $VERSION = eval $VERSION;
 
 requires 'db';

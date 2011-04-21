@@ -1,6 +1,9 @@
 Revision history for Giddy
 
 {{$NEXT}}
+	- Fixed small errors in the manual
+
+0.012_003 2011-04-20 21:09:39 Asia/Jerusalem
 	- Changed how repo creation is made as Git::Repository::create()
 	  is now deprecated
 	- Forcing usage of Git::Repository version 1.18 and above due to
