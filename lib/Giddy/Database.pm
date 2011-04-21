@@ -9,7 +9,7 @@ use Carp;
 use Git::Repository::Log::Iterator;
 use Giddy::Collection;
 
-our $VERSION = "0.012_004";
+our $VERSION = "0.012_005";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -28,7 +28,13 @@ global to the database, like commit changes, undoing changes, etc.
 
 =head1 CONSUMES
 
-L<Giddy::Role::PathAnalyzer>
+=over
+
+=item * L<Giddy::Role::PathAnalyzer>
+
+=item * L<Giddy::Role::PathMaker>
+
+=back
 
 =head1 ATTRIBUTES
 

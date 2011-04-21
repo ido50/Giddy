@@ -9,7 +9,7 @@ use Carp;
 use Git::Repository 1.18;
 use Giddy::Database;
 
-our $VERSION = "0.012_004";
+our $VERSION = "0.012_005";
 $VERSION = eval $VERSION;
 
 =head1 NAME

@@ -10,7 +10,7 @@ use Giddy::Collection::InMemory;
 use Giddy::StaticDirectory;
 use Tie::IxHash;
 
-our $VERSION = "0.012_004";
+our $VERSION = "0.012_005";
 $VERSION = eval $VERSION;
 
 has 'path' => (is => 'ro', isa => 'Str', default => '');
@@ -47,10 +47,17 @@ etc.
 
 =head1 CONSUMES
 
-L<Giddy::Role::DocumentLoader>
-L<Giddy::Role::DocumentMatcher>
-L<Giddy::Role::DocumentStorer>
-L<Giddy::Role::DocumentUpdater>
+=over
+
+=item * L<Giddy::Role::DocumentLoader>
+
+=item * L<Giddy::Role::DocumentMatcher>
+
+=item * L<Giddy::Role::DocumentStorer>
+
+=item * L<Giddy::Role::DocumentUpdater>
+
+=back
 
 =head1 ATTRIBUTES
 

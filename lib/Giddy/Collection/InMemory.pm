@@ -5,7 +5,7 @@ package Giddy::Collection::InMemory;
 use Any::Moose;
 use namespace::autoclean;
 
-our $VERSION = "0.012_004";
+our $VERSION = "0.012_005";
 $VERSION = eval $VERSION;
 
 extends 'Giddy::Collection';

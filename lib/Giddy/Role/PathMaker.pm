@@ -6,7 +6,7 @@ use namespace::autoclean;
 use Carp;
 use File::Path qw/make_path/;
 
-our $VERSION = "0.012_004";
+our $VERSION = "0.012_005";
 $VERSION = eval $VERSION;
 
 =head1 NAME

@@ -1,6 +1,9 @@
 Revision history for Giddy
 
 {{$NEXT}}
+	- Added some more info to the docs
+
+0.012_004 2011-04-21 03:24:38 Asia/Jerusalem
 	- Fixed small errors in the manual
 
 0.012_003 2011-04-20 21:09:39 Asia/Jerusalem

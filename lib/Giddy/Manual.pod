@@ -43,10 +43,11 @@ Main database features (not all features implemented yet):
 
 =back
 
-Giddy was inspired by the similar, Scala-based L<gimd|https://code.google.com/p/gimd/>
+Giddy was inspired by the similar, Ruby-based L<gitmodel|https://github.com/pauldowman/gitmodel>
 project; the Ruby-based L<toto|http://cloudhead.io/toto> blogging
-platform; and L<MongoDB>. While the database's structure is very similar
-to that of gimd and toto, its API's syntax was written to closely resemble that
+platform; the Scala-based L<gimd|https://code.google.com/p/gimd/>
+project; and L<MongoDB>. While the database's structure closely resembles
+those of gitmodel and toto, its API's syntax was written to closely resemble that
 of MongoDB.
 
 =head2 WHAT ARE GIDDY'S USE CASES?
