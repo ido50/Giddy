@@ -8,7 +8,7 @@ use Encode;
 use Try::Tiny;
 use YAML::XS;
 
-our $VERSION = "0.012_005";
+our $VERSION = "0.013_001";
 $VERSION = eval $VERSION;
 
 requires 'db';
@@ -50,9 +50,10 @@ sub _load_document_file {
 		my $doc = Load("---\n$yaml");
 		$doc->{_body} = $body;
 		$doc->{_name} = $name;
+		$doc->{_coll} = $self->path;
 		return $doc;
 	} catch {
-		return { _body => $body, _name => $name };
+		return { _body => $body, _name => $name, _coll => $self->path };
 	};
 }
 
@@ -85,6 +86,7 @@ sub _load_document_dir {
 
 	$doc->{_name} = $name
 		if $doc && scalar keys %$doc;
+	$doc->{_coll} = $self->path;
 
 	return $doc;
 }

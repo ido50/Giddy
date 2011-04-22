@@ -9,7 +9,7 @@ use Carp;
 use Git::Repository::Log::Iterator;
 use Giddy::Collection;
 
-our $VERSION = "0.012_005";
+our $VERSION = "0.013_001";
 $VERSION = eval $VERSION;
 
 =head1 NAME

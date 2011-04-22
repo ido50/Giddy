@@ -1,6 +1,12 @@
 Revision history for Giddy
 
 {{$NEXT}}
+	- Finding a document by name is now much faster when the query is for
+	  an exact name (i.e. _name => 'asdf' or _name => { '$eq' => 'asdf }),
+	  very important when collection has a lot of documents
+	- When loading documents, they now also have a _coll attribute with
+	  the path of the collection in which they reside
+	- The 'cached' attribute in Giddy::Collection should be built lazily
 	- Added some more info to the docs
 
 0.012_004 2011-04-21 03:24:38 Asia/Jerusalem

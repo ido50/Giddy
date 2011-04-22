@@ -8,7 +8,7 @@ use namespace::autoclean;
 use Carp;
 use IO::File;
 
-our $VERSION = "0.012_005";
+our $VERSION = "0.013_001";
 $VERSION = eval $VERSION;
 
 =head1 NAME

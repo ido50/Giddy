@@ -8,9 +8,10 @@ use Data::Compare;
 use DateTime::Format::W3CDTF;
 use Try::Tiny;
 
-our $VERSION = "0.012_005";
+our $VERSION = "0.013_001";
 $VERSION = eval $VERSION;
 
+requires 'db';
 requires '_documents';
 requires '_load_document';
 
@@ -26,7 +27,7 @@ Giddy::Role::DocumentMatcher - Provides query parsing and document matching for 
 
 This role provides document matching capabilities to L<Giddy::Collection> and L<Giddy::Collection::InMemory>.
 
-Requires the '_documents' and '_load_document' attributes/methods to be implemented by consuming classes.
+Requires the 'db', '_documents' and '_load_document' attributes/methods to be implemented by consuming classes.
 
 =head1 METHODS
 
@@ -44,12 +45,40 @@ sub _match_by_name {
 	$name eq '' && return $self->_documents;
 
 	my $docs = Tie::IxHash->new;
-	foreach ($self->_documents->Keys) {
-		$docs->STORE($_ => $self->_documents->FETCH($_))
-			if $self->_attribute_matches({ _name => $_ }, '_name', $name);
-	}
 
-	$docs->SortByKey;
+	# if query is for equality then only one document can be matched
+	# and since we want this to be fast, let's search for it a little
+	# differently
+	if (!ref $name || (ref $name eq 'HASH' && scalar keys %$name == 1 && $name->{'$eq'})) {
+		# if the collection is in-memory, then we already have a
+		# hash-ref of all documents in it and we can just find out
+		# if it has the document we're searching for
+		my $n = ref $name ? $name->{'$eq'} : $name;
+		if (ref $self eq 'Giddy::Collection::InMemory') {
+			my $doc = $self->_documents->FETCH($n);
+			$docs->STORE($n => $doc)
+				if $doc;
+		} else {
+			# we're gonna use Git's cat-file command and see
+			# if we have such a document. Since this command
+			# croaks when the document doesn't exist, we're
+			# gonna eval it
+			try {
+				my $type = $self->db->_repo->run('cat-file', '-t', 'HEAD:'.$self->_path_to($n));
+				if ($type eq 'blob') {
+					$docs->STORE($n => 'file');
+				} elsif ($type eq 'tree') {
+					$docs->STORE($n => 'dir');
+				}
+			};
+		}
+	} else {
+		foreach (grep { $self->_attribute_matches({ _name => $_ }, '_name', $name) } $self->_documents->Keys) {
+			$docs->STORE($_ => $self->_documents->FETCH($_));
+		}
+
+		$docs->SortByKey;
+	}
 
 	return $docs;
 }

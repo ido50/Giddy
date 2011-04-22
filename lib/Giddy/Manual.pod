@@ -640,6 +640,11 @@ useful when sorting):
 It's important to note that calling these methods doesn't affect the internal
 iterator, or take it into consideration at all, so you can always call these methods.
 
+A document returned by any of the above mentioned iteration methods is
+returned in hash-ref format. This hash-ref will hold any of the document's
+attributes, including its name (under the '_name' key), and also the path
+to its collection (under the '_coll' key).
+
 =head3 SORTING DOCUMENTS
 
 Sorting is fairly easy with Giddy, and quite similar to MongoDB. However, you can't

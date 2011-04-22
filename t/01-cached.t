@@ -12,7 +12,7 @@ use Try::Tiny;
 
 has_git();
 
-plan tests => 95;
+plan tests => 96;
 
 my $tmpdir = tempdir(CLEANUP => 1);
 diag("Gonna use $tmpdir for the temporary database directory");
@@ -48,6 +48,7 @@ my $html = $db->find_one("collection/$html_n");
 ok($html, 'Found HTML document');
 is($html->{_body}, '<h1>Giddy</h1>', 'HTML content OK');
 is($html->{user}, 'gitguy', 'HTML attributes OK');
+is($html->{_coll}, 'collection', 'Document has _coll attribute');
 
 my $json = $db->find_one("collection/$json_n");
 ok($json, 'Found JSON document');
@@ -156,7 +157,7 @@ $db->stage('four');
 $db->commit("Created some child collections and documents in the four document");
 
 my $f3 = $root->find({ imdb_score => { '$gt' => 7.5 } });
-is_deeply([$f3->all], [{ _name => 'four', title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8, _has_many => ['jsons', 'texts'], _has_one => ['stuff'] }], 'Got the correct result when searching by $gt => 7.5');
+is_deeply([$f3->all], [{ _name => 'four', _coll => '', title => 'Zombieland', starring => ['Woody Harrelson', 'Jesse Eisenberg', 'Emma Stone'], year => 2009, imdb_score => 7.8, _has_many => ['jsons', 'texts'], _has_one => ['stuff'] }], 'Got the correct result when searching by $gt => 7.5');
 
 my $f4 = $root->find({ starring => 'Jesse Eisenberg' });
 my @r4 = $f4->all;
