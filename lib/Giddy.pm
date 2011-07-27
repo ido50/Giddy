@@ -2,15 +2,18 @@ package Giddy;
 
 # ABSTRACT: Schema-less, versioned media/document database based on Git.
 
-use Any::Moose;
+our $VERSION = "0.020";
+$VERSION = eval $VERSION;
+
+use Moose;
 use namespace::autoclean;
 
 use Carp;
 use Git::Repository 1.18;
 use Giddy::Database;
-
-our $VERSION = "0.013_001";
-$VERSION = eval $VERSION;
+use Giddy::Collection::FileSystem;
+use Giddy::Collection::InMemory;
+use Giddy::StaticDirectory;
 
 =head1 NAME
 

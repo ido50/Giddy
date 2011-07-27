@@ -2,15 +2,15 @@ package Giddy::Database;
 
 # ABSTRACT: A Giddy database.
 
-use Any::Moose;
+our $VERSION = "0.020";
+$VERSION = eval $VERSION;
+
+use Moose;
 use namespace::autoclean;
 
 use Carp;
+use File::Path qw/make_path/;
 use Git::Repository::Log::Iterator;
-use Giddy::Collection;
-
-our $VERSION = "0.013_001";
-$VERSION = eval $VERSION;
 
 =head1 NAME
 
@@ -26,16 +26,6 @@ This class represents Giddy databases. Aside from providing you with the ability
 to create and get collections from the database, it provides methods which are
 global to the database, like commit changes, undoing changes, etc.
 
-=head1 CONSUMES
-
-=over
-
-=item * L<Giddy::Role::PathAnalyzer>
-
-=item * L<Giddy::Role::PathMaker>
-
-=back
-
 =head1 ATTRIBUTES
 
 =head2 _repo
@@ -46,7 +36,7 @@ out if you feel the need to run specific Git commands.
 
 =head2 _staged
 
-A list of paths staged (added) to the next commit job. Automatically created.
+A list of paths staged (added) to the next commit job. Internally maintained.
 
 =cut
 
@@ -54,14 +44,11 @@ has '_repo' => (is => 'ro', isa => 'Git::Repository', required => 1);
 
 has '_staged' => (is => 'ro', isa => 'ArrayRef[Str]', default => sub { [] }, writer => '_set_staged');
 
-with	'Giddy::Role::PathAnalyzer',
-	'Giddy::Role::PathMaker';
-
 =head1 OBJECT METHODS
 
 =head2 get_collection( [ $path_to_coll ] )
 
-Returns a L<Giddy::Collection> object tied to a certain directory in the database.
+Returns a L<Giddy::Collection::FileSystem> object tied to a certain directory in the database.
 If a path is not provided, the root collection ('') will be used. If the collection
 does not exist, Giddy will attempt to create it. The path provided has to be relative
 to the database's full path, with no starting slash.
@@ -78,13 +65,13 @@ sub get_collection {
 			if $path =~ m!^/!;
 
 		croak "The collection path exists in the database but is not a collection."
-			if $self->_path_exists($path) && ($self->_is_document_dir($path) || $self->_is_static_dir($path));
+			if $self->_path_exists($path) && !$self->_is_collection($path);
 
 		# create the collection directory (unless it already exists)
 		$self->_create_dir($path);
 	}
 
-	return Giddy::Collection->new(db => $self, path => $path);
+	return Giddy::Collection::FileSystem->new(db => $self, path => $path);
 }
 
 =head2 commit( [$commit_msg] )
@@ -261,6 +248,231 @@ sub log {
 	} else {
 		return Git::Repository::Log::Iterator->new($self->_repo, 'HEAD');
 	}
+}
+
+=head1 INTERNAL METHODS
+
+=head2 _list_contents( $path )
+
+Returns a list of all files and directories in C<$path>. Assumes C<$path> is a directory.
+
+=cut
+
+sub _list_contents {
+	my ($self, $path) = @_;
+
+	return grep { $_ ne '.giddy' } sort $self->_repo->run('ls-tree', '--name-only', $path ? "HEAD:$path" : 'HEAD');
+}
+
+=head2 _list_files( $path )
+
+Returns a list of all static files in the directory. Assumes C<$path> is a directory.
+
+=cut
+
+sub _list_files {
+	my ($self, $path) = @_;
+
+	return grep { $self->_is_file($path.'/'.$_) } $self->_list_contents($path);
+}
+
+=head2 _list_dirs( $path )
+
+Returns a list of all child directories in the directory. Assumes C<$path> is a directory.
+
+=cut
+
+sub _list_dirs {
+	my ($self, $path) = @_;
+
+	return grep { $self->_is_directory($path.'/'.$_) } $self->_list_contents($path);
+}
+
+=head2 _read_content( $path )
+
+Returns the contents of the file stored in C<$path>.
+
+=cut
+
+sub _read_content {
+	my ($self, $path) = @_;
+
+	''.$self->_repo->run('show', "HEAD:$path");
+}
+
+=head2 _path_exists( $path )
+
+Returns true if C<$path> exists in the database index (i.e. it's not enough for
+the path to exist in the working directory, it must be in the Git index as well).
+
+=cut
+
+sub _path_exists {
+	my ($self, $path) = @_;
+
+	my ($dir, $name) = ('', '');
+	if ($path && $path =~ m!/([^/]+)$!) {
+		$name = $1;
+		$dir = $`;
+	} else {
+		$name = $path;
+	}
+
+	if (grep { $_ eq $name } $self->_list_contents($dir)) {
+		return 1;
+	}
+
+	return;
+}
+
+=head2 _is_file( $path )
+
+Returns true if C<$path> is a file. Assumes path exists.
+
+=cut
+
+sub _is_file {
+	my ($self, $path) = @_;
+
+	my $t = $self->_repo->run('cat-file', '-t', "HEAD:$path");
+	return $t eq 'blob' ? 1 : undef;
+}
+
+=head2 _is_directory( $path )
+
+Returns true if C<$path> is a directory. Assumes path exists.
+
+=cut
+
+sub _is_directory {
+	my ($self, $path) = @_;
+
+	my $t = $self->_repo->run('cat-file', '-t', "HEAD:$path");
+	return $t eq 'tree' ? 1 : undef;
+}
+
+=head2 _is_collection( $path )
+
+Returns true if C<$path> is a collection directory. Assumes path exists.
+
+=cut
+
+sub _is_collection {
+	my ($self, $path) = @_;
+
+	return $self->_is_directory($path) && !$self->_is_document_dir($path) && !$self->_is_static_dir($path) ? 1 : 0;
+}
+
+=head2 _is_document_dir( $path )
+
+Returns true if C<$path> is a document directory. Assumes path exists.
+
+=cut
+
+sub _is_document_dir {
+	my ($self, $path) = @_;
+
+	return $self->_is_directory($path) && $self->_path_exists($path.'/'.'attributes.yaml') ? 1 : 0;
+}
+
+=head2 _is_static_dir( $path )
+
+Returns true if C<$path> is a static-file directory. Assumes path exists.
+
+=cut
+
+sub _is_static_dir {
+	my ($self, $path) = @_;
+
+	return unless $self->_is_directory($path);
+
+	# a static dir is marked by a .static file, but it doesn't have to have
+	# that file if it's a child of a static dir
+	while ($path) {
+		return 1 if $self->_path_exists($path.'/.static');
+		$path = $self->_up($path);
+	}
+
+	return;
+}
+
+=head2 _up( $path )
+
+Returns the parent directory of C<$path> (if any).
+
+=cut
+
+sub _up {
+	my ($self, $path) = @_;
+
+	if ($path =~ m!/[^/]+$!) {
+		return $`;
+	} else {
+		return '';
+	}
+}
+
+=head2 _create_dir( $path )
+
+Creates a directory under C<$path> and chmods it 0775. If path already exists,
+nothing will happen.
+
+=cut
+
+sub _create_dir {
+	my ($self, $path) = @_;
+
+	make_path($self->_repo->work_tree.'/'.$path, { mode => 0775 });
+}
+
+=head2 _mark_dir_as_static( $path )
+
+Marks a path (assumed to be a directory) as a static-file directory by creating
+an empty '.static' file under it.
+
+=cut
+
+sub _mark_dir_as_static {
+	my ($self, $path) = @_;
+
+	$self->_touch($path.'/.static');
+}
+
+=head2 _touch( $path )
+
+Creates an empty file in C<$path> and chmods it 0664.
+
+=cut
+
+sub _touch {
+	my ($self, $path) = @_;
+
+	open(FILE, ">:utf8", $self->_repo->work_tree.'/'.$path)
+		|| croak "Can't _touch $path: $!";
+	close FILE;
+	chmod(0664, $self->_repo->work_tree.'/'.$path);
+}
+
+=head2 _create_file( $path, $content, $mode )
+
+Creates a file called C<$path>, with the provided content, and chmods it to
+C<$mode>.
+
+=cut
+
+sub _create_file {
+	my ($self, $path, $content, $mode) = @_;
+
+	# there's no need to open the output file in binary :utf-8 mode,
+	# as the YAML Dump() function returns UTF-8 encoded data (so it seems)
+
+	open(FILE, '>', $self->_repo->work_tree.'/'.$path)
+		|| croak "Can't open file $path for writing: $!";
+	flock(FILE, 2);
+	print FILE $content;
+	close(FILE)
+		|| carp "Error closing file $path: $!";
+	chmod($mode, $self->_repo->work_tree.'/'.$path);
 }
 
 =head1 AUTHOR

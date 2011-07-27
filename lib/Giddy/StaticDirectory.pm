@@ -2,14 +2,14 @@ package Giddy::StaticDirectory;
 
 # ABSTRACT: A Giddy directory of static files.
 
-use Any::Moose;
+our $VERSION = "0.020";
+$VERSION = eval $VERSION;
+
+use Moose;
 use namespace::autoclean;
 
 use Carp;
 use IO::File;
-
-our $VERSION = "0.013_001";
-$VERSION = eval $VERSION;
 
 =head1 NAME
 
@@ -42,7 +42,7 @@ The relative path of the directory. Always has a starting slash. Required.
 
 =head2 coll
 
-The L<Giddy::Collection> object the directory belongs to. This is even if the
+The Giddy collection object the directory belongs to. This is even if the
 directory is not a direct child of the collection, but some descendant of it.
 Required.
 
@@ -50,7 +50,7 @@ Required.
 
 has 'path' => (is => 'ro', isa => 'Str', required => 1);
 
-has 'coll' => (is => 'ro', isa => 'Giddy::Collection', required => 1);
+has 'coll' => (is => 'ro', does => 'Giddy::Collection', required => 1);
 
 =head1 OBJECT METHODS
 

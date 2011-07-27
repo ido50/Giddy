@@ -1,6 +1,27 @@
 Revision history for Giddy
 
 {{$NEXT}}
+	- Now using Moose instead of Any::Moose as for some reason I've
+	  had some problems.
+	- Created Giddy::Collection::FileSystem as the class that represents
+	  real collections, and turned Giddy::Collection to a Moose role,
+	  as for some reason Moose was giving me weird problems with inheritance
+	- Fixed bugs when traversing real collections
+	- Removed all Giddy::Role::* classes, moved them directly into their
+	  appropriate consuming classes (every role was only consumed by
+	  one class so there wasn't any real reason for them)
+	- Created Giddy::Database::_is_collection() to make checking faster,
+	  also _is_collection(), _is_document_dir() and _is_static_dir()
+	  also perform _is_directory() automatically.
+
+0.013_001 2011-04-22 22:26:31 Asia/Jerusalem
+	- Fixed bugs when traversing documents in a Giddy::Collection object
+	  (i.e. not a Giddy::Collection::InMemory object), namely moved the
+	  "_loaded" attribute to Giddy::Collection and removed references
+	  to the "_query" attribute when dealing with Giddy::Collection
+	  objects and not Giddy::Collection::InMemory objects
+
+0.013_001 2011-04-22 22:26:31 Asia/Jerusalem
 	- Finding a document by name is now much faster when the query is for
 	  an exact name (i.e. _name => 'asdf' or _name => { '$eq' => 'asdf }),
 	  very important when collection has a lot of documents

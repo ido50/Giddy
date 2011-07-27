@@ -2,13 +2,11 @@ package Giddy::Collection::InMemory;
 
 # ABSTRACT: An in-memory collection (result of queries).
 
-use Any::Moose;
-use namespace::autoclean;
-
-our $VERSION = "0.013_001";
+our $VERSION = "0.020";
 $VERSION = eval $VERSION;
 
-extends 'Giddy::Collection';
+use Moose;
+use namespace::autoclean;
 
 =head1 NAME
 
@@ -16,57 +14,47 @@ Giddy::Collection::InMemory - An in-memory collection (result of queries).
 
 =head1 SYNOPSIS
 
-	my $in_memory_collection = $collection->find({ _name => qr/wow/ });
-
-	# use $in_memory_collection just like any other Giddy::Collection object
+	my $in_memory_collection = $other_collection->find({ _name => qr/wow/ });
 
 =head1 DESCRIPTION
 
 This class represents in-memory collections. These are created by running C<find()>
 and C<grep()> queries on other collection (either real collections represented by
-L<Giddy::Collection> or other in-memory collections).
+L<Giddy::Collection::FileSystem> or other in-memory collections).
 
-Except from not being able to drop in-memory collections, using them is performed
-I<exactly> the same as using real ones, so refer to L<Giddy::Collection> for details.
+Except from not being able to drop in-memory collections, using them is
+I<exactly> the same as using real ones, so refer to L<Giddy::Collection>,
+which is a L<Moose role|Moose::Role> that provides the main API for both
+types of collections.
 
-=head1 EXTENDS
+=head1 CONSUMES
 
 L<Giddy::Collection>
 
 =head1 ATTRIBUTES
 
+The following attributes are added to those provided by Giddy::Collection:
+
 =head2 _documents
 
 An array-reference of the documents in the collection. Not to be used externally.
 
-=head2 _loaded
+=head2 _opts
 
-A hash-ref containing loaded document structures. Not tobe used externally.
-
-=head2 _query
-
-A hash-ref with details about the query that created the collection.
-Not to be used externally.
+The options hash-ref that (may have been) passed to the query method that
+generated the collection object. Not to be used externally.
 
 =cut
 
 has '_documents' => (is => 'ro', isa => 'Tie::IxHash', default => sub { Tie::IxHash->new }, writer => '_set_documents');
 
-has '_loaded' => (is => 'ro', isa => 'HashRef[HashRef]', default => sub { {} }, writer => '_set_loaded');
+has '_opts' => (is => 'ro', isa => 'HashRef', default => sub { {} });
 
-has '_query' => (is => 'ro', isa => 'HashRef', required => 1);
+with 'Giddy::Collection';
 
-=head1 METHODS
+=head1 OBJECT METHODS
 
-Just the same as in L<Giddy::Collection>, of course, except for:
-
-=head2 drop()
-
-Doesn't do anything. Really.
-
-=cut
-
-sub drop { 1 }
+I<None other than those provided by Giddy::Collection>.
 
 =head1 AUTHOR
 
