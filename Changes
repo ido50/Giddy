@@ -1,10 +1,12 @@
 Revision history for Giddy
 
 {{$NEXT}}
+	- Now using MQUL for document matching and updating (MQUL was extracted
+	  from Giddy and released on CPAN independently)
 	- Now using Moose instead of Any::Moose as for some reason I've
 	  had some problems.
 	- Created Giddy::Collection::FileSystem as the class that represents
-	  real collections, and turned Giddy::Collection to a Moose role,
+	  real collections, and turned Giddy::Collection into a Moose role,
 	  as for some reason Moose was giving me weird problems with inheritance
 	- Fixed bugs when traversing real collections
 	- Removed all Giddy::Role::* classes, moved them directly into their
